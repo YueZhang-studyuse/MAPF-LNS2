@@ -46,6 +46,10 @@ public:
     void writeResultToFile(const string & file_name) const;
     void writePathsToFile(const string & file_name) const;
     string getSolverName() const override { return "LNS(" + init_algo_name + ";" + replan_algo_name + ")"; }
+
+    bool loadPaths(vector<list<int>> paths);
+    void commitPath(int step, vector<list<int>> &commit_path, vector<list<int>> &future_path,bool skip_start);
+
 private:
     InitLNS* init_lns = nullptr;
     bool has_initial_solution = false;

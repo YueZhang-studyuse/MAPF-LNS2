@@ -1095,6 +1095,30 @@ bool LNS::loadPaths(const string & file_name)
     return true;
 }
 
+bool LNS::loadPaths(vector<list<int>> paths)
+{
+    for (int agent_id = 0; agent_id < instance.getDefaultNumberOfAgents(); agent_id++)
+    {
+        for(auto location: paths[agent_id])
+        {
+            agents[agent_id].path.emplace_back(location);
+        }
+        if (agents[agent_id].path.front().location != agents[agent_id].path_planner->start_location)
+        {
+            cerr << "Agent " << agent_id <<"'s path starts at " << agents[agent_id].path.front().location
+            << "=(" << instance.getColCoordinate(agents[agent_id].path.front().location)
+            << "," << instance.getRowCoordinate(agents[agent_id].path.front().location)
+            << "), which is different from its start location " << agents[agent_id].path_planner->start_location << endl
+            << "=(" << instance.getColCoordinate(agents[agent_id].path_planner->start_location)
+            << "," << instance.getRowCoordinate(agents[agent_id].path_planner->start_location)
+            << ")" << endl;
+            exit(-1);
+        }
+    }
+    has_initial_solution = true;
+    return true;
+}
+
 void LNS::writePathsToFile(const string & file_name) const
 {
     std::ofstream output;
@@ -1111,4 +1135,66 @@ void LNS::writePathsToFile(const string & file_name) const
         output << endl;
     }
     output.close();
+}
+
+void LNS::commitPath(int commit_step, vector<list<int>> &commit_path, vector<list<int>> &future_path,bool skip_start)
+{
+    for (const auto &agent : agents)
+    {
+        cout<<"Commiting: "<<agent.id<<endl;
+        if (agent.path.size() > commit_step)
+        {
+            int step = 0;
+            for (const auto &state : agent.path)
+            {
+                if (step == 0)
+                {
+                    if (skip_start)
+                    {
+                        step++;
+                        continue;
+                    }
+                }
+                if(step <commit_step)
+                {
+                    commit_path[agent.id].emplace_back(state.location);
+                    cout<< "(" << instance.getColCoordinate(state.location) << "," <<
+                                instance.getRowCoordinate(state.location) << ")->";
+                }
+                else if (step == commit_step)
+                {
+                    commit_path[agent.id].emplace_back(state.location);
+                    cout<< "(" << instance.getColCoordinate(state.location) << "," <<
+                                instance.getRowCoordinate(state.location) << ")"<<endl;
+                    cout<<"Remaining: "<<endl;
+                    future_path[agent.id].emplace_back(state.location);
+                    cout<< "(" << instance.getColCoordinate(state.location) << "," <<
+                                instance.getRowCoordinate(state.location) << ")->";
+                }
+                else
+                {
+                    future_path[agent.id].emplace_back(state.location);
+                    cout<< "(" << instance.getColCoordinate(state.location) << "," <<
+                                instance.getRowCoordinate(state.location) << ")->";
+                }
+                step++;
+            }
+
+        }
+        else
+        {
+            for (const auto &state : agent.path)
+            {
+                commit_path[agent.id].emplace_back(state.location);
+                cout<< "(" << instance.getColCoordinate(state.location) << "," <<
+                            instance.getRowCoordinate(state.location) << ")->";
+            }
+            cout<<endl;
+            cout<<"Remaining: "<<endl;
+                future_path[agent.id].emplace_back(commit_path[agent.id].back());
+                cout<< "(" << instance.getColCoordinate(commit_path[agent.id].back()) << "," <<
+                            instance.getRowCoordinate(commit_path[agent.id].back()) << ")->";
+        }
+        cout<<endl;
+    }
 }

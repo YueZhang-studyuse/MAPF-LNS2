@@ -129,6 +129,112 @@ int main(int argc, char** argv)
         if (vm.count("stats"))
             eecbs.writeIterStatsToFile(vm["stats"].as<string>());
     }
+    else if (vm["solver"].as<string>() == "LNS-Online") // my commit lns
+    {
+        double initial_time = 300;
+        double step_time = 2;
+        double commit_step = 3;
+        int max_iterations = 100;
+        //note here I put future path start = commited path (I assume start at timestep 0?)
+        vector<list<int>> commited_paths;
+        vector<list<int>> future_paths;
+        commited_paths.resize(instance.getDefaultNumberOfAgents());
+        future_paths.resize(instance.getDefaultNumberOfAgents());
+        bool commited_done = false;
+        bool initial_run = true;
+        while(!commited_done)
+        {
+            //update start locations
+            //for (auto path: commited_paths)
+            for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
+            {
+                if (commited_paths[i].size()>0) 
+                {
+                    //change instance.start locations according commited_paths
+                    instance.setStart(i,commited_paths[i].back());
+                }
+                //else we do nothing, just keep as in instances
+            }
+            //init lns
+            bool succ;
+            if (initial_run)
+            {
+                LNS lns(instance, initial_time,
+                vm["initAlgo"].as<string>(),
+                vm["replanAlgo"].as<string>(),
+                vm["destoryStrategy"].as<string>(),
+                vm["neighborSize"].as<int>(),
+                0,
+                vm["initLNS"].as<bool>(),
+                vm["initDestoryStrategy"].as<string>(),
+                vm["sipp"].as<bool>(),
+                vm["truncatePaths"].as<bool>(),
+                screen, pipp_option);
+                //run lns to get next commit
+                succ = lns.run();
+                if (succ)
+                {
+                    lns.validateSolution();
+                    lns.commitPath(commit_step,commited_paths,future_paths,false);
+                }
+                else
+                {
+                    cerr << "Initialise solution failed" << endl;
+                    exit(-1);
+                }
+                lns.writePathsToFile("InitialPath.txt");
+                initial_run = false;
+            }
+            else
+            {
+                LNS lns(instance, step_time*commit_step,
+                vm["initAlgo"].as<string>(),
+                vm["replanAlgo"].as<string>(),
+                vm["destoryStrategy"].as<string>(),
+                vm["neighborSize"].as<int>(),
+                max_iterations,
+                vm["initLNS"].as<bool>(),
+                vm["initDestoryStrategy"].as<string>(),
+                vm["sipp"].as<bool>(),
+                vm["truncatePaths"].as<bool>(),
+                screen, pipp_option);
+                //load initial path
+                if (!lns.loadPaths(future_paths))
+                {
+                    cerr << "The input path wrong" << endl;
+                    exit(-1);
+                }
+                succ = lns.run();
+                if (succ)
+                {
+                    lns.validateSolution();
+                    future_paths.clear();
+                    future_paths.resize(instance.getDefaultNumberOfAgents());
+                    lns.commitPath(commit_step,commited_paths,future_paths,true);
+                }
+                else
+                {
+                    cerr << "Iteration failed" << endl;
+                    exit(-1);
+                }
+            }
+            //check if commit is done
+            if (!commited_paths[0].empty())
+            {
+                for (auto path: future_paths)
+                {
+                    if (path.size() <= 1) //first path is the start location
+                        commited_done = true;
+                    else
+                    {
+                        commited_done = false;
+                        break;
+                    }    
+                }
+
+            }
+        }
+    }
 	else
     {
 	    cerr << "Solver " << vm["solver"].as<string>() << " does not exist!" << endl;

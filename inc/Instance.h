@@ -75,6 +75,9 @@ public:
     void savePaths(const string & file_name, const vector<Path*>& paths) const;
     bool validateSolution(const vector<Path*>& paths, int sum_of_costs, int num_of_colliding_pairs) const;
     bool hasCollision(const Path& p1, const Path& p2) const;
+
+	void setStart(int agent, int location){start_locations[agent] = location;}
+	
 private:
 	  // int moves_offset[MOVE_COUNT];
 	  vector<bool> my_map;
