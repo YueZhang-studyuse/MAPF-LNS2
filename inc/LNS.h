@@ -48,7 +48,8 @@ public:
     string getSolverName() const override { return "LNS(" + init_algo_name + ";" + replan_algo_name + ")"; }
 
     bool loadPaths(vector<list<int>> paths);
-    void commitPath(int step, vector<list<int>> &commit_path, vector<list<int>> &future_path,bool skip_start);
+    void commitPath(int step, vector<list<int>> &commit_path, vector<list<int>> &future_path,bool skip_start,int current_time);
+    void validateCommitSolution(vector<list<int>> commited_paths) const;
 
 private:
     InitLNS* init_lns = nullptr;
