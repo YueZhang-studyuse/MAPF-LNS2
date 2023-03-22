@@ -27,6 +27,8 @@ int main(int argc, char** argv)
         ("cutoffTime,t", po::value<double>()->default_value(7200), "cutoff time (seconds)")
 		("screen,s", po::value<int>()->default_value(0),
 		        "screen option (0: none; 1: LNS results; 2:LNS detailed results; 3: MAPF detailed results)")
+        ("commitStep,c", po::value<int>()->default_value(1), "steps per commit")
+
 		("stats", po::value<string>(), "output stats file")
 
 		// solver
@@ -132,9 +134,9 @@ int main(int argc, char** argv)
     else if (vm["solver"].as<string>() == "LNS-Online") // my commit lns
     {
         double initial_time = 300;
-        double step_time = 2;
-        double commit_step = 3;
-        int max_iterations = 100;
+        double step_time = 1;
+        double commit_step = vm["commitStep"].as<int>();
+        int max_iterations = MAX_TIMESTEP;
         //note here I put future path start = commited path (I assume start at timestep 0?)
         vector<list<int>> commited_paths;
         vector<list<int>> future_paths;
@@ -142,6 +144,8 @@ int main(int argc, char** argv)
         future_paths.resize(instance.getDefaultNumberOfAgents());
         bool commited_done = false;
         bool initial_run = true;
+        double total_step = 0;
+        list<int> solution_costs;
         while(!commited_done)
         {
             //update start locations
@@ -175,7 +179,10 @@ int main(int argc, char** argv)
                 if (succ)
                 {
                     lns.validateSolution();
-                    lns.commitPath(commit_step,commited_paths,future_paths,false);
+                    lns.commitPath(commit_step,commited_paths,future_paths,false,total_step);
+                    solution_costs.emplace_back(lns.sum_of_costs);
+                    total_step+=commit_step;
+                    std::cout<<"Preprocessing time: "<<lns.preprocessing_time<<std::endl;
                 }
                 else
                 {
@@ -210,7 +217,33 @@ int main(int argc, char** argv)
                     lns.validateSolution();
                     future_paths.clear();
                     future_paths.resize(instance.getDefaultNumberOfAgents());
-                    lns.commitPath(commit_step,commited_paths,future_paths,true);
+                    lns.commitPath(commit_step,commited_paths,future_paths,true,total_step);
+                    int sic = 0;
+                    for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
+                    {
+                        auto path = commited_paths[i];
+                        sic+= path.size()-1;
+                        if (path.back() == instance.getGoals()[i])
+                        {
+                            bool first = true;
+                            for (auto it = path.rbegin(); it != path.rend();++it)
+                            {
+                                if (first)
+                                {
+                                    first = false;
+                                    continue;
+                                }
+                                if (*it == instance.getGoals()[i])
+                                {
+                                    sic--;
+                                }
+                            }
+                        }
+                        sic+=future_paths[i].size()-1;
+                    }
+                    solution_costs.emplace_back(sic);
+                    total_step+=commit_step;
+                    std::cout<<"Preprocessing time: "<<lns.preprocessing_time<<std::endl;
                 }
                 else
                 {
@@ -234,6 +267,39 @@ int main(int argc, char** argv)
 
             }
         }
+        //maybe add a validation to see if solution is correct
+        LNS lns(instance, step_time*commit_step,
+                vm["initAlgo"].as<string>(),
+                vm["replanAlgo"].as<string>(),
+                vm["destoryStrategy"].as<string>(),
+                vm["neighborSize"].as<int>(),
+                max_iterations,
+                vm["initLNS"].as<bool>(),
+                vm["initDestoryStrategy"].as<string>(),
+                vm["sipp"].as<bool>(),
+                vm["truncatePaths"].as<bool>(),
+                screen, pipp_option);
+        lns.validateCommitSolution(commited_paths);
+        cout<<"num of commits per step:"<<endl;
+        cout<<commit_step<<endl;
+        cout<<"time per step:"<<endl;
+        cout<<step_time<<endl;
+        cout<<"sic in iterations:"<<endl;
+        for(auto sic: solution_costs)
+        {
+            cout<<sic<<" ";
+        }
+        cout<<endl;
+        // cout<<"commit paths:"<<endl;
+        // for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
+        // {
+        //     for (auto vertex: commited_paths[i])
+        //     {
+        //         cout<<vertex<<", ";
+        //     }
+        //     cout<<endl;
+        // }
+        // cout<<endl;
     }
 	else
     {
