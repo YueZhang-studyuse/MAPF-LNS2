@@ -51,6 +51,10 @@ public:
     void commitPath(int step, vector<list<int>> &commit_path, vector<list<int>> &future_path,bool skip_start,int current_time);
     void validateCommitSolution(vector<list<int>> commited_paths) const;
 
+    void setIterations(int iterations){ num_of_iterations = iterations;}
+    void setRuntimeLimit(int time){time_limit = time; replan_time_limit = time_limit / 100;}
+    void clearAll(const string & destory_name);
+
 private:
     InitLNS* init_lns = nullptr;
     bool has_initial_solution = false;

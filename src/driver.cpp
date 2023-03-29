@@ -87,7 +87,8 @@ int main(int argc, char** argv)
                 vm["replanAlgo"].as<string>(),
                 vm["destoryStrategy"].as<string>(),
                 vm["neighborSize"].as<int>(),
-                vm["maxIterations"].as<int>(),
+                //vm["maxIterations"].as<int>(),
+                MAX_TIMESTEP,
                 vm["initLNS"].as<bool>(),
                 vm["initDestoryStrategy"].as<string>(),
                 vm["sipp"].as<bool>(),
@@ -146,6 +147,17 @@ int main(int argc, char** argv)
         bool initial_run = true;
         double total_step = 0;
         list<int> solution_costs;
+        LNS lns(instance, initial_time,
+                vm["initAlgo"].as<string>(),
+                vm["replanAlgo"].as<string>(),
+                vm["destoryStrategy"].as<string>(),
+                vm["neighborSize"].as<int>(),
+                0,
+                vm["initLNS"].as<bool>(),
+                vm["initDestoryStrategy"].as<string>(),
+                vm["sipp"].as<bool>(),
+                vm["truncatePaths"].as<bool>(),
+                screen, pipp_option);
         while(!commited_done)
         {
             //update start locations
@@ -163,17 +175,6 @@ int main(int argc, char** argv)
             bool succ;
             if (initial_run)
             {
-                LNS lns(instance, initial_time,
-                vm["initAlgo"].as<string>(),
-                vm["replanAlgo"].as<string>(),
-                vm["destoryStrategy"].as<string>(),
-                vm["neighborSize"].as<int>(),
-                0,
-                vm["initLNS"].as<bool>(),
-                vm["initDestoryStrategy"].as<string>(),
-                vm["sipp"].as<bool>(),
-                vm["truncatePaths"].as<bool>(),
-                screen, pipp_option);
                 //run lns to get next commit
                 succ = lns.run();
                 if (succ)
@@ -194,17 +195,21 @@ int main(int argc, char** argv)
             }
             else
             {
-                LNS lns(instance, step_time*commit_step,
-                vm["initAlgo"].as<string>(),
-                vm["replanAlgo"].as<string>(),
-                vm["destoryStrategy"].as<string>(),
-                vm["neighborSize"].as<int>(),
-                max_iterations,
-                vm["initLNS"].as<bool>(),
-                vm["initDestoryStrategy"].as<string>(),
-                vm["sipp"].as<bool>(),
-                vm["truncatePaths"].as<bool>(),
-                screen, pipp_option);
+                // LNS lns(instance, step_time*commit_step,
+                // vm["initAlgo"].as<string>(),
+                // vm["replanAlgo"].as<string>(),
+                // vm["destoryStrategy"].as<string>(),
+                // vm["neighborSize"].as<int>(),
+                // max_iterations,
+                // vm["initLNS"].as<bool>(),
+                // vm["initDestoryStrategy"].as<string>(),
+                // vm["sipp"].as<bool>(),
+                // vm["truncatePaths"].as<bool>(),
+                // screen, pipp_option);
+                lns.clearAll(vm["destoryStrategy"].as<string>());
+                lns.setIterations(max_iterations);
+                lns.setRuntimeLimit(step_time*commit_step);
+                
                 //load initial path
                 if (!lns.loadPaths(future_paths))
                 {
@@ -240,6 +245,29 @@ int main(int argc, char** argv)
                             }
                         }
                         sic+=future_paths[i].size()-1;
+                        if (sic > solution_costs.back())
+                        {
+                            cout<<"commit paths:"<<endl;
+                            for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
+                            {
+                                for (auto vertex: commited_paths[i])
+                                {
+                                    cout<<vertex<<", ";
+                                }
+                                cout<<endl;
+                            }
+                            cout<<endl;  
+                            cout<<"future paths"<<endl;
+                            for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
+                            {
+                                for (auto vertex: future_paths[i])
+                                {
+                                    cout<<vertex<<", ";
+                                }
+                                cout<<endl;
+                            }
+                            cout<<endl;
+                        }
                     }
                     solution_costs.emplace_back(sic);
                     total_step+=commit_step;
@@ -268,17 +296,18 @@ int main(int argc, char** argv)
             }
         }
         //maybe add a validation to see if solution is correct
-        LNS lns(instance, step_time*commit_step,
-                vm["initAlgo"].as<string>(),
-                vm["replanAlgo"].as<string>(),
-                vm["destoryStrategy"].as<string>(),
-                vm["neighborSize"].as<int>(),
-                max_iterations,
-                vm["initLNS"].as<bool>(),
-                vm["initDestoryStrategy"].as<string>(),
-                vm["sipp"].as<bool>(),
-                vm["truncatePaths"].as<bool>(),
-                screen, pipp_option);
+        // LNS lns(instance, step_time*commit_step,
+        //         vm["initAlgo"].as<string>(),
+        //         vm["replanAlgo"].as<string>(),
+        //         vm["destoryStrategy"].as<string>(),
+        //         vm["neighborSize"].as<int>(),
+        //         max_iterations,
+        //         vm["initLNS"].as<bool>(),
+        //         vm["initDestoryStrategy"].as<string>(),
+        //         vm["sipp"].as<bool>(),
+        //         vm["truncatePaths"].as<bool>(),
+        //         screen, pipp_option);
+        //lns.setIterations(max_iterations);
         lns.validateCommitSolution(commited_paths);
         cout<<"num of commits per step:"<<endl;
         cout<<commit_step<<endl;

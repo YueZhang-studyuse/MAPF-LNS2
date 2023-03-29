@@ -111,6 +111,11 @@ bool LNS::run()
 
     while (runtime < time_limit && iteration_stats.size() <= num_of_iterations)
     {
+        // int settings = 0;
+        // if (sum_of_costs <= settings)
+        // {
+        //     break;
+        // }
         runtime =((fsec)(Time::now() - start_time)).count();
         if(screen >= 1)
             validateSolution();
@@ -1233,7 +1238,7 @@ void LNS::writePathsToFile(const string & file_name) const
 
 void LNS::commitPath(int commit_step, vector<list<int>> &commit_path, vector<list<int>> &future_path,bool skip_start,int current_time)
 {
-    int scrren = 0;
+    int scrren = 3;
     for (const auto &agent : agents)
     {
         if (scrren == 3)
@@ -1328,6 +1333,72 @@ void LNS::commitPath(int commit_step, vector<list<int>> &commit_path, vector<lis
         if (scrren == 3)
             cout<<endl;
     }
+}
+
+void LNS::clearAll(const string & destory_name)
+{
+    path_table.reset();
+    tabu_list.clear();
+    intersections.clear();
+    int i = 0;
+    auto starts = instance.getStarts();
+    for (auto& a: agents)
+    {
+        a.path.clear();
+        a.path_planner->start_location = starts[i];
+        i++;
+    }
+    //start_time = Time::now();
+    neighbor.agents.clear();
+    neighbor.sum_of_costs = 0;
+    neighbor.old_sum_of_costs = 0;
+    neighbor.colliding_pairs.clear();
+    neighbor.old_colliding_pairs.clear();
+    neighbor.old_paths.clear();
+
+    num_of_failures = 0;
+    iteration_stats.clear();
+    average_group_size = -1;
+    sum_of_costs = 0;
+
+    // decay_factor = -1;
+    // reaction_factor = -1;
+    // destroy_weights.clear();
+    // selected_neighbor = 0;
+
+    preprocessing_time = 0;
+    initial_solution_runtime = 0;
+    initial_sum_of_costs = -1;
+    sum_of_costs_lowerbound = -1;
+    sum_of_distances = -1;
+    restart_times = 0;
+    complete_paths = 0;
+    delete_timesteps = 0;
+
+    num_of_iterations = 0;
+
+    if (destory_name == "Adaptive")
+    {
+        ALNS = true;
+        destroy_weights.clear();
+        destroy_weights.assign(DESTORY_COUNT, 1);
+        decay_factor = 0.01;
+        reaction_factor = 0.01;
+    }
+    else if (destory_name == "RandomWalk")
+        destroy_strategy = RANDOMWALK;
+    else if (destory_name == "Intersection")
+        destroy_strategy = INTERSECTION;
+    else if (destory_name == "Random")
+        destroy_strategy = RANDOMAGENTS;
+    else
+    {
+        cerr << "Destroy heuristic " << destory_name << " does not exists. " << endl;
+        exit(-1);
+    }
+
+    //start_time = Time::now();
+    //replan_time_limit = time_limit / 100;
 }
 
 
