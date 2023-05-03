@@ -68,6 +68,36 @@ void PathTable::getConflictingAgents(int agent_id, set<int>& conflicting_agents,
     // TODO: collect target conflicts as well.
 }
 
+void PathTable::getConflictingAgentswithStayTarget(int agent_id, set<int>& conflicting_agents, vector<int> stay_target, int from, int to, int to_time) const
+{
+    if (table.empty())
+        return;
+    if (table[to].size() > to_time && table[to][to_time] != NO_AGENT)
+    {
+        int agent = table[to][to_time];
+        bool insert_to_set = true;
+        if (stay_target[agent] != 0)
+        {
+            insert_to_set = (rand()*(stay_target[agent] + 1) < 1);
+        }
+        if (insert_to_set)
+            conflicting_agents.insert(agent); // vertex conflict
+    }
+        
+    if (table[to].size() >= to_time && table[from].size() > to_time &&
+        table[to][to_time - 1] != NO_AGENT && table[from][to_time] == table[to][to_time - 1])
+    {
+        int agent = table[from][to_time];
+        bool insert_to_set = true;
+        if (stay_target[agent] != 0)
+        {
+            insert_to_set = (rand()*(stay_target[agent] + 1) < 1);
+        }
+        if (insert_to_set)
+            conflicting_agents.insert(agent); // vertex conflict
+    }
+}
+
 void PathTable::get_agents(set<int>& conflicting_agents, int loc) const
 {
     if (loc < 0)
@@ -108,6 +138,50 @@ void PathTable::get_agents(set<int>& conflicting_agents, int neighbor_size, int 
         }
         delta++;
     }
+}
+
+void PathTable::get_agents_with_stay_target(set<int>& conflicting_agents, vector<int> stay_target, int neighbor_size, int loc) const
+{
+    if (loc < 0 || table[loc].empty())
+        return;
+    int t_max = (int) table[loc].size() - 1;
+    while (table[loc][t_max] == NO_AGENT && t_max > 0)
+        t_max--;
+    if (t_max == 0)
+        return;
+    int t0 = rand() % t_max;
+    if (table[loc][t0] != NO_AGENT)
+        //conflicting_agents.insert(table[loc][t0]);
+        insert_with_target_stay(conflicting_agents,stay_target,table[loc][t0]);
+    int delta = 1;
+    while (t0 - delta >= 0 || t0 + delta <= t_max)
+    {
+        if (t0 - delta >= 0 && table[loc][t0 - delta] != NO_AGENT)
+        {
+            //conflicting_agents.insert(table[loc][t0 - delta]);
+            insert_with_target_stay(conflicting_agents,stay_target,table[loc][t0 - delta]);
+            if((int) conflicting_agents.size() == neighbor_size)
+                return;
+        }
+        if (t0 + delta <= t_max && table[loc][t0 + delta] != NO_AGENT)
+        {
+            //conflicting_agents.insert(table[loc][t0 + delta]);
+            insert_with_target_stay(conflicting_agents,stay_target,table[loc][t0 + delta]);
+            if((int) conflicting_agents.size() == neighbor_size)
+                return;
+        }
+        delta++;
+    }
+}
+void PathTable::insert_with_target_stay(set<int>& conflicting_agents, vector<int> stay_target,int agent) const
+{
+    bool insert_to_set = true;
+    if (stay_target[agent] != 0)
+    {
+        insert_to_set = (rand()*(stay_target[agent] + 1) < 1);
+    }
+    if (insert_to_set)
+        conflicting_agents.insert(agent); // vertex conflict
 }
 
 // get the holding time after the earliest_timestep for a location

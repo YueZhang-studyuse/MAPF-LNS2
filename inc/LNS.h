@@ -55,6 +55,8 @@ public:
     void setRuntimeLimit(int time){time_limit = time; replan_time_limit = time_limit / 100;}
     void clearAll(const string & destory_name);
 
+    bool target_considered = true;
+
 private:
     InitLNS* init_lns = nullptr;
     bool has_initial_solution = false;
@@ -72,6 +74,9 @@ private:
     // 2. avoid making copies of this variable as much as possible.
     unordered_set<int> tabu_list; // used by randomwalk strategy
     list<int> intersections;
+
+    //for commitment
+    vector<int> stay_target;
 
     bool runEECBS();
     bool runCBS();
@@ -93,6 +98,10 @@ private:
     int findRandomAgent() const;
     void randomWalk(int agent_id, int start_location, int start_timestep,
                     set<int>& neighbor, int neighbor_size, int upperbound);
+
+    void randomWalkwithStayTarget(int agent_id, int start_location, int start_timestep,
+                     set<int>& conflicting_agents, int neighbor_size, int upperbound);
+
     void truncatePaths();
     void deleteRepeatedStates();
 };

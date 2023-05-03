@@ -38,11 +38,19 @@ LNS::LNS(const Instance& instance, double time_limit, string init_algo_name, str
 
     int N = instance.getDefaultNumberOfAgents();
     agents.reserve(N);
+    stay_target.resize(N);
+
     for (int i = 0; i < N; i++)
+    {
         agents.emplace_back(instance, i, use_sipp);
+        stay_target[i] = 0;
+    }
+        
+    
     preprocessing_time = ((fsec)(Time::now() - start_time)).count();
     if (screen >= 2)
         cout << "Pre-processing time = " << preprocessing_time << " seconds." << endl;
+    
 }
 
 bool LNS::run()
@@ -769,6 +777,7 @@ bool LNS::generateNeighborByIntersection()
         cout << "Generate " << neighbor.agents.size() << " neighbors by intersection " << location << endl;
     return true;
 }
+
 bool LNS::generateNeighborByRandomWalk()
 {
     if (neighbor_size >= (int)agents.size())
@@ -790,7 +799,10 @@ bool LNS::generateNeighborByRandomWalk()
     while (neighbors_set.size() < neighbor_size && count < 10)
     {
         int t = rand() % agents[a].path.size();
-        randomWalk(a, agents[a].path[t].location, t, neighbors_set, neighbor_size, (int) agents[a].path.size() - 1);
+        if (target_considered)
+            randomWalkwithStayTarget(a, agents[a].path[t].location, t, neighbors_set, neighbor_size, (int) agents[a].path.size() - 1);
+        else
+            randomWalk(a, agents[a].path[t].location, t, neighbors_set, neighbor_size, (int) agents[a].path.size() - 1);
         count++;
         // select the next agent randomly
         int idx = rand() % neighbors_set.size();
@@ -875,6 +887,34 @@ void LNS::randomWalk(int agent_id, int start_location, int start_timestep,
             if (t + 1 + next_h_val < upperbound) // move to this location
             {
                 path_table.getConflictingAgents(agent_id, conflicting_agents, loc, *it, t + 1);
+                loc = *it;
+                break;
+            }
+            next_locs.erase(it);
+        }
+        if (next_locs.empty() || conflicting_agents.size() >= neighbor_size)
+            break;
+    }
+}
+
+void LNS::randomWalkwithStayTarget(int agent_id, int start_location, int start_timestep,
+                     set<int>& conflicting_agents, int neighbor_size, int upperbound)
+{
+    int loc = start_location;
+    for (int t = start_timestep; t < upperbound; t++)
+    {
+        auto next_locs = instance.getNeighbors(loc);
+        next_locs.push_back(loc);
+        while (!next_locs.empty())
+        {
+            int step = rand() % next_locs.size();
+            auto it = next_locs.begin();
+            advance(it, step);
+            int next_h_val = agents[agent_id].path_planner->my_heuristic[*it];
+            if (t + 1 + next_h_val < upperbound) // move to this location
+            {
+                //path_table.getConflictingAgents(agent_id, conflicting_agents, loc, *it, t + 1);
+                path_table.getConflictingAgentswithStayTarget(agent_id, conflicting_agents,stay_target, loc, *it, t + 1);
                 loc = *it;
                 break;
             }
@@ -1144,16 +1184,16 @@ void LNS::writePathsToFile(const string & file_name) const
 
 // void LNS::commitPath(int commit_step, vector<list<int>> &commit_path, vector<list<int>> &future_path,bool skip_start,int current_time)
 // {
-//     int scrren = 0;
+//     int screen = 0;
 //     for (const auto &agent : agents)
 //     {
-//         if (scrren == 3)
+//         if (screen == 3)
 //             cout<<"Commiting: "<<agent.id<<endl;
 //         //agent reach target before, but need to de-tour due to resolving conflict, so we add the time reach target as waiting
 //         if (current_time != 0 && agent.path.size() > 1 && commit_path[agent.id].size() <= current_time)
 //         {
 //             commit_path[agent.id].emplace_back(commit_path[agent.id].back());
-//             if (scrren == 3)
+//             if (screen == 3)
 //                 cout<< "(" << instance.getColCoordinate(commit_path[agent.id].back()) << "," <<
 //                                 instance.getRowCoordinate(commit_path[agent.id].back()) << ")->";
 //         }
@@ -1173,14 +1213,14 @@ void LNS::writePathsToFile(const string & file_name) const
 //                 if(step <commit_step)
 //                 {
 //                     commit_path[agent.id].emplace_back(state.location);
-//                     if (scrren == 3)
+//                     if (screen == 3)
 //                         cout<< "(" << instance.getColCoordinate(state.location) << "," <<
 //                                 instance.getRowCoordinate(state.location) << ")->";
 //                 }
 //                 else if (step == commit_step)
 //                 {
 //                     commit_path[agent.id].emplace_back(state.location);
-//                     if (scrren == 3)
+//                     if (screen == 3)
 //                     {
 //                         cout<< "(" << instance.getColCoordinate(state.location) << "," <<
 //                                     instance.getRowCoordinate(state.location) << ")"<<endl;
@@ -1188,14 +1228,14 @@ void LNS::writePathsToFile(const string & file_name) const
 //                     }
                         
 //                     future_path[agent.id].emplace_back(state.location);
-//                     if (scrren == 3)
+//                     if (screen == 3)
 //                         cout<< "(" << instance.getColCoordinate(state.location) << "," <<
 //                                 instance.getRowCoordinate(state.location) << ")->";
 //                 }
 //                 else
 //                 {
 //                     future_path[agent.id].emplace_back(state.location);
-//                     if (scrren == 3)
+//                     if (screen == 3)
 //                         cout<< "(" << instance.getColCoordinate(state.location) << "," <<
 //                                 instance.getRowCoordinate(state.location) << ")->";
 //                 }
@@ -1217,42 +1257,45 @@ void LNS::writePathsToFile(const string & file_name) const
 //                     }
 //                 }
 //                 commit_path[agent.id].emplace_back(state.location);
-//                 if (scrren == 3)
+//                 if (screen == 3)
 //                     cout<< "(" << instance.getColCoordinate(state.location) << "," <<
 //                             instance.getRowCoordinate(state.location) << ")->";
 //             }
-//             if (scrren == 3)
+//             if (screen == 3)
 //             {
 //                 cout<<endl;
 //                 cout<<"Remaining: "<<endl;
 //             }
 //             future_path[agent.id].emplace_back(commit_path[agent.id].back());
-//             if (scrren == 3)
+//             if (screen == 3)
 //                 cout<< "(" << instance.getColCoordinate(commit_path[agent.id].back()) << "," <<
 //                         instance.getRowCoordinate(commit_path[agent.id].back()) << ")->";
 //         }
-//         if (scrren == 3)
+//         if (screen == 3)
 //             cout<<endl;
 //     }
 // }
 
 void LNS::commitPath(int commit_step, vector<list<int>> &commit_path, vector<list<int>> &future_path,bool skip_start,int current_time)
 {
-    int scrren = 3;
     for (const auto &agent : agents)
     {
-        if (scrren == 3)
+        if (screen == 3)
             cout<<"Commiting: "<<agent.id<<endl;
         //agent reach target before, but need to de-tour due to resolving conflict, so we add the time reach target as waiting
         // if (current_time != 0 && agent.path.size() > 1 && commit_path[agent.id].size() <= current_time)
         // {
         //     commit_path[agent.id].emplace_back(commit_path[agent.id].back());
-        //     if (scrren == 3)
+        //     if (screen == 3)
         //         cout<< "(" << instance.getColCoordinate(commit_path[agent.id].back()) << "," <<
         //                         instance.getRowCoordinate(commit_path[agent.id].back()) << ")->";
         // }
         if (agent.path.size() > commit_step)
         {
+            if (stay_target[agent.id] != 0)
+            {
+                stay_target[agent.id] = 0;
+            }
             int step = 0;
             for (const auto &state : agent.path)
             {
@@ -1267,14 +1310,14 @@ void LNS::commitPath(int commit_step, vector<list<int>> &commit_path, vector<lis
                 if(step <commit_step)
                 {
                     commit_path[agent.id].emplace_back(state.location);
-                    if (scrren == 3)
+                    if (screen == 3)
                         cout<< "(" << instance.getColCoordinate(state.location) << "," <<
                                 instance.getRowCoordinate(state.location) << ")->";
                 }
                 else if (step == commit_step)
                 {
                     commit_path[agent.id].emplace_back(state.location);
-                    if (scrren == 3)
+                    if (screen == 3)
                     {
                         cout<< "(" << instance.getColCoordinate(state.location) << "," <<
                                     instance.getRowCoordinate(state.location) << ")"<<endl;
@@ -1282,14 +1325,14 @@ void LNS::commitPath(int commit_step, vector<list<int>> &commit_path, vector<lis
                     }
                         
                     future_path[agent.id].emplace_back(state.location);
-                    if (scrren == 3)
+                    if (screen == 3)
                         cout<< "(" << instance.getColCoordinate(state.location) << "," <<
                                 instance.getRowCoordinate(state.location) << ")->";
                 }
                 else
                 {
                     future_path[agent.id].emplace_back(state.location);
-                    if (scrren == 3)
+                    if (screen == 3)
                         cout<< "(" << instance.getColCoordinate(state.location) << "," <<
                                 instance.getRowCoordinate(state.location) << ")->";
                 }
@@ -1311,7 +1354,7 @@ void LNS::commitPath(int commit_step, vector<list<int>> &commit_path, vector<lis
                     }
                 }
                 commit_path[agent.id].emplace_back(state.location);
-                if (scrren == 3)
+                if (screen == 3)
                     cout<< "(" << instance.getColCoordinate(state.location) << "," <<
                             instance.getRowCoordinate(state.location) << ")->";
                 step++;
@@ -1319,18 +1362,19 @@ void LNS::commitPath(int commit_step, vector<list<int>> &commit_path, vector<lis
             for (;step<=commit_step;step++)
             {
                 commit_path[agent.id].emplace_back(commit_path[agent.id].back());
+                stay_target[agent.id]++;
             }
-            if (scrren == 3)
+            if (screen == 3)
             {
                 cout<<endl;
                 cout<<"Remaining: "<<endl;
             }
             future_path[agent.id].emplace_back(commit_path[agent.id].back());
-            if (scrren == 3)
+            if (screen == 3)
                 cout<< "(" << instance.getColCoordinate(commit_path[agent.id].back()) << "," <<
                         instance.getRowCoordinate(commit_path[agent.id].back()) << ")->";
         }
-        if (scrren == 3)
+        if (screen == 3)
             cout<<endl;
     }
 }
