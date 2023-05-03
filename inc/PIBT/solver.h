@@ -54,4 +54,6 @@ public:
   double getElapsed() { return elapsedTime; };
 
   virtual std::string logStr();
+
+  int max_timestep = -1;
 };

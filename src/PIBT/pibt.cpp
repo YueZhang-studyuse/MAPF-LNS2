@@ -45,6 +45,8 @@ void PIBT::init() {
 bool PIBT::solve() {
   solveStart();
 
+  int step = 0;
+
   while (!P->isSolved()) {
     allocate();
     update();
@@ -52,6 +54,9 @@ bool PIBT::solve() {
       if(time_limit&&((fsec)(std::chrono::system_clock::now()-startT)).count()>time_limit){
           break;
       }
+      step++;
+      if(step == max_timestep)
+        break;
   }
 
   solveEnd();
