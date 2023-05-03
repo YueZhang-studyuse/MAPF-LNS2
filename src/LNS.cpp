@@ -1338,8 +1338,8 @@ void LNS::commitPath(int commit_step, vector<list<int>> &commit_path, vector<lis
 void LNS::clearAll(const string & destory_name)
 {
     path_table.reset();
-    tabu_list.clear();
-    intersections.clear();
+    //tabu_list.clear();
+    //intersections.clear();
     int i = 0;
     auto starts = instance.getStarts();
     for (auto& a: agents)
