@@ -76,13 +76,13 @@ Path SIPP::findPath(const ConstraintTable& constraint_table)
             goal->is_goal = true;
             goal->h_val = 0;
             goal->num_of_conflicts += future_collisions;
-            auto next_windowed_collision = curr->num_of_conflicts_windowed;
-            if (curr->timestep <= commit_window)
-            {
-                if (constraint_table.constrained(curr->location,curr->timestep+1))
-                    next_windowed_collision++;
-            }
-            goal->num_of_conflicts_windowed = next_windowed_collision;
+            //auto next_windowed_collision = curr->num_of_conflicts_windowed;
+            // if (curr->timestep <= commit_window)
+            // {
+            //     if (constraint_table.constrained(curr->location,curr->timestep+1))
+            //         next_windowed_collision++;
+            // }
+            // goal->num_of_conflicts_windowed = next_windowed_collision;
             
             // try to retrieve it from the hash table
             if (dominanceCheck(goal))
@@ -116,19 +116,19 @@ Path SIPP::findPath(const ConstraintTable& constraint_table)
                                     // (int)curr->collision_v * max(next_timestep - curr->timestep - 1, 0) + // wait time
                                       (int)next_v_collision + (int)next_e_collision;
                 //we also add windowed conflicts
-                auto next_windowed_collision = curr->num_of_conflicts_windowed;
-                if (curr->timestep <= commit_window)
-                {
-                    if (constraint_table.constrained(next_location,curr->timestep+1))
-                        next_windowed_collision++;
-                    if (constraint_table.constrained(curr->location,next_location,curr->timestep+1))
-                        next_windowed_collision++;
-                }
+                // auto next_windowed_collision = curr->num_of_conflicts_windowed;
+                // if (curr->timestep <= commit_window)
+                // {
+                //     if (constraint_table.constrained(next_location,curr->timestep+1))
+                //         next_windowed_collision++;
+                //     if (constraint_table.constrained(curr->location,next_location,curr->timestep+1))
+                //         next_windowed_collision++;
+                // }
                 auto next_h_val = max(my_heuristic[next_location], (next_collisions > 0?
                     holding_time : curr->getFVal()) - next_timestep); // path max
                 // generate (maybe temporary) node
                 auto next = new SIPPNode(next_location, next_timestep, next_h_val, curr, next_timestep,
-                                         next_high_generation, next_high_expansion, next_v_collision, next_collisions,next_windowed_collision);
+                                         next_high_generation, next_high_expansion, next_v_collision, next_collisions);
                 // try to retrieve it from the hash table
                 if (dominanceCheck(next))
                     pushNodeToFocal(next);
@@ -147,15 +147,15 @@ Path SIPP::findPath(const ConstraintTable& constraint_table)
                     // (int)curr->collision_v * max(next_timestep - curr->timestep - 1, 0) +
 		    (int)get<2>(interval);
             //we also add windowed conflicts
-            auto next_windowed_collision = curr->num_of_conflicts_windowed;
-            if (curr->timestep <= commit_window)
-            {
-                if (constraint_table.constrained(curr->location,curr->timestep+1))
-                    next_windowed_collision++;
-            }
+            // auto next_windowed_collision = curr->num_of_conflicts_windowed;
+            // if (curr->timestep <= commit_window)
+            // {
+            //     if (constraint_table.constrained(curr->location,curr->timestep+1))
+            //         next_windowed_collision++;
+            // }
             auto next = new SIPPNode(curr->location, next_timestep, next_h_val, curr, next_timestep,
                                      get<1>(interval), get<1>(interval), get<2>(interval),
-                                     next_collisions,next_windowed_collision);
+                                     next_collisions);
             next->wait_at_goal = (curr->location == goal_location);
             if (dominanceCheck(next))
                 pushNodeToFocal(next);
