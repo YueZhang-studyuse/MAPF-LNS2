@@ -24,15 +24,48 @@ struct Agent
     }
 };
 
+struct CollisionGraphCmpByTime
+{
+    bool operator() (const tuple<int,int,int> &a, const tuple<int,int,int> &b)
+    {
+        // if (a.first == b.first)
+        //     return false;
+        // return a.second > b.second;
+        if (std::get<0>(a) == std::get<0>(b) && std::get<1>(a) == std::get<1>(b))
+        {
+            return false;
+        }
+        return std::get<2>(a) < std::get<2>(b);
+    }
+};
+
+
 struct Neighbor
 {
     vector<int> agents;
     int sum_of_costs;
     int old_sum_of_costs;
-    set<pair<int, int>> colliding_pairs;  // id1 < id2
-    set<pair<int, int>> old_colliding_pairs;  // id1 < id2
+
+    //for checking target
+    int sum_of_costs_target;
+    int old_sum_of_costs_target;
+
+    // set<pair<int, int>> colliding_pairs;  // id1 < id2
+    // set<pair<int, int>> old_colliding_pairs;  // id1 < id2
     vector<Path> old_paths;
+
+    // set<pair<int, int>> colliding_pairs_windowed; 
+    // set<pair<int, int>> old_colliding_pairs_windowed;
+
+    //maybe it is easier we change it to a map?
+    typedef set<tuple<int,int,int>,CollisionGraphCmpByTime> collidingSet;
+    collidingSet colliding_pairs;
+    collidingSet old_colliding_pairs;
+    //we still need windowed because we want to compare 
+    collidingSet colliding_pairs_windowed;
+    collidingSet old_colliding_pairs_windowed;
 };
+
 
 class BasicLNS
 {

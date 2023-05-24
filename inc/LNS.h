@@ -57,6 +57,8 @@ public:
 
     bool target_considered = true;
 
+    int commit_window = -1;
+
 private:
     InitLNS* init_lns = nullptr;
     bool has_initial_solution = false;

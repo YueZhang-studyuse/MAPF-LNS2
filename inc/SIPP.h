@@ -9,16 +9,27 @@ public:
 	// define a typedefs for handles to the heaps (allow up to quickly update a node in the heap)
 	typedef boost::heap::pairing_heap< SIPPNode*, compare<SIPPNode::compare_node> >::handle_type open_handle_t;
 	typedef boost::heap::pairing_heap< SIPPNode*, compare<SIPPNode::secondary_compare_node> >::handle_type focal_handle_t;
+	//we use the windowed comparision for focal
+	//typedef boost::heap::pairing_heap< SIPPNode*, compare<SIPPNode::windowed_secondary_compare_node> >::handle_type focal_handle_t;
 	open_handle_t open_handle;
 	focal_handle_t focal_handle;
 	int high_generation; // the upper bound with respect to generation
     int high_expansion; // the upper bound with respect to expansion
 	bool collision_v;
+	//for my windowed approach
+	//int num_of_conflicts_windowed = 0;
+
     SIPPNode() : LLNode() {}
 	SIPPNode(int loc, int g_val, int h_val, SIPPNode* parent, int timestep, int high_generation, int high_expansion,
 	        bool collision_v, int num_of_conflicts) :
             LLNode(loc, g_val, h_val, parent, timestep, num_of_conflicts), high_generation(high_generation),
-            high_expansion(high_expansion), collision_v(collision_v) {}
+            high_expansion(high_expansion), collision_v(collision_v) 
+			{}
+	SIPPNode(int loc, int g_val, int h_val, SIPPNode* parent, int timestep, int high_generation, int high_expansion,
+	        bool collision_v, int num_of_conflicts, int num_of_conflicts_windowed) :
+            LLNode(loc, g_val, h_val, parent, timestep, num_of_conflicts,num_of_conflicts_windowed), high_generation(high_generation),
+            high_expansion(high_expansion), collision_v(collision_v) 
+			{}
 	// SIPPNode(const SIPPNode& other): LLNode(other), high_generation(other.high_generation), high_expansion(other.high_expansion),
         //                              collision_v(other.collision_v) {}
 	~SIPPNode() {}

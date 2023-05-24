@@ -3,6 +3,7 @@
 void SIPP::updatePath(const LLNode* goal, vector<PathEntry> &path)
 {
     num_collisions = goal->num_of_conflicts;
+    num_windowed_collisions = goal->num_of_conflicts_windowed;
 	path.resize(goal->timestep + 1);
 	// num_of_conflicts = goal->num_of_conflicts;
 
@@ -21,6 +22,7 @@ void SIPP::updatePath(const LLNode* goal, vector<PathEntry> &path)
 	}
 	assert(curr->timestep == 0);
 	path[0].location = curr->location;
+    cout<<"single agent: "<<goal->num_of_conflicts_windowed<<endl;
 }
 
 
@@ -52,6 +54,7 @@ Path SIPP::findPath(const ConstraintTable& constraint_table)
         curr->in_openlist = false;
         num_expanded++;
         assert(curr->location >= 0);
+        //cout<<"curr "<<curr->num_of_conflicts_windowed<<endl;
         // check if the popped node is a goal
         if (curr->is_goal)
         {
@@ -73,6 +76,14 @@ Path SIPP::findPath(const ConstraintTable& constraint_table)
             goal->is_goal = true;
             goal->h_val = 0;
             goal->num_of_conflicts += future_collisions;
+            auto next_windowed_collision = curr->num_of_conflicts_windowed;
+            if (curr->timestep <= commit_window)
+            {
+                if (constraint_table.constrained(curr->location,curr->timestep+1))
+                    next_windowed_collision++;
+            }
+            goal->num_of_conflicts_windowed = next_windowed_collision;
+            
             // try to retrieve it from the hash table
             if (dominanceCheck(goal))
                 pushNodeToFocal(goal);
@@ -82,6 +93,17 @@ Path SIPP::findPath(const ConstraintTable& constraint_table)
 
         for (int next_location : instance.getNeighbors(curr->location)) // move to neighboring locations
         {
+            if (curr->timestep <= commit_window)
+            {
+                int collsion = curr->num_of_conflicts;
+                if (constraint_table.constrained(next_location,curr->timestep+1))
+                    collsion++;
+                if (constraint_table.constrained(curr->location,next_location,curr->timestep+1))
+                    collsion++;
+                if (collsion>0)
+                    continue;
+                
+            }
             for (auto & i : reservation_table.get_safe_intervals(
                     curr->location, next_location, curr->timestep + 1, curr->high_expansion + 1))
             {
@@ -93,11 +115,20 @@ Path SIPP::findPath(const ConstraintTable& constraint_table)
                 auto next_collisions = curr->num_of_conflicts +
                                     // (int)curr->collision_v * max(next_timestep - curr->timestep - 1, 0) + // wait time
                                       (int)next_v_collision + (int)next_e_collision;
+                //we also add windowed conflicts
+                auto next_windowed_collision = curr->num_of_conflicts_windowed;
+                if (curr->timestep <= commit_window)
+                {
+                    if (constraint_table.constrained(next_location,curr->timestep+1))
+                        next_windowed_collision++;
+                    if (constraint_table.constrained(curr->location,next_location,curr->timestep+1))
+                        next_windowed_collision++;
+                }
                 auto next_h_val = max(my_heuristic[next_location], (next_collisions > 0?
                     holding_time : curr->getFVal()) - next_timestep); // path max
                 // generate (maybe temporary) node
                 auto next = new SIPPNode(next_location, next_timestep, next_h_val, curr, next_timestep,
-                                         next_high_generation, next_high_expansion, next_v_collision, next_collisions);
+                                         next_high_generation, next_high_expansion, next_v_collision, next_collisions,next_windowed_collision);
                 // try to retrieve it from the hash table
                 if (dominanceCheck(next))
                     pushNodeToFocal(next);
@@ -115,9 +146,16 @@ Path SIPP::findPath(const ConstraintTable& constraint_table)
             auto next_collisions = curr->num_of_conflicts +
                     // (int)curr->collision_v * max(next_timestep - curr->timestep - 1, 0) +
 		    (int)get<2>(interval);
+            //we also add windowed conflicts
+            auto next_windowed_collision = curr->num_of_conflicts_windowed;
+            if (curr->timestep <= commit_window)
+            {
+                if (constraint_table.constrained(curr->location,curr->timestep+1))
+                    next_windowed_collision++;
+            }
             auto next = new SIPPNode(curr->location, next_timestep, next_h_val, curr, next_timestep,
                                      get<1>(interval), get<1>(interval), get<2>(interval),
-                                     next_collisions);
+                                     next_collisions,next_windowed_collision);
             next->wait_at_goal = (curr->location == goal_location);
             if (dominanceCheck(next))
                 pushNodeToFocal(next);
@@ -443,12 +481,15 @@ bool SIPP::dominanceCheck(SIPPNode* new_node)
     for (auto & old_node : ptr->second)
     {
         if (old_node->timestep <= new_node->timestep and
-            old_node->num_of_conflicts <= new_node->num_of_conflicts)
+            //old_node->num_of_conflicts <= new_node->num_of_conflicts
+            old_node->num_of_conflicts_windowed <= new_node->num_of_conflicts_windowed
+            )
         { // the new node is dominated by the old node
             return false;
         }
         else if (old_node->timestep >= new_node->timestep and
-                old_node->num_of_conflicts >= new_node->num_of_conflicts) // the old node is dominated by the new node
+                //old_node->num_of_conflicts >= new_node->num_of_conflicts) // the old node is dominated by the new node
+        old_node->num_of_conflicts_windowed <= new_node->num_of_conflicts_windowed)
         { // delete the old node
             if (old_node->in_openlist) // the old node has not been expanded yet
                 eraseNodeFromLists(old_node); // delete it from open and/or focal lists
@@ -463,12 +504,12 @@ bool SIPP::dominanceCheck(SIPPNode* new_node)
         { // intervals overlap --> we need to split the node to make them disjoint
             if (old_node->timestep <= new_node->timestep)
             {
-                assert(old_node->num_of_conflicts > new_node->num_of_conflicts);
+                //assert(old_node->num_of_conflicts > new_node->num_of_conflicts);
                 old_node->high_expansion = new_node->timestep;
             }
             else // i.e., old_node->timestep > new_node->timestep
             {
-                assert(old_node->num_of_conflicts <= new_node->num_of_conflicts);
+                //assert(old_node->num_of_conflicts <= new_node->num_of_conflicts);
                 new_node->high_expansion = old_node->timestep;
             }
         }

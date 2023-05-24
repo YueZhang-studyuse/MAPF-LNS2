@@ -11,6 +11,7 @@ public:
 	LLNode* parent = nullptr;
 	int timestep = 0;
 	int num_of_conflicts = 0;
+	int num_of_conflicts_windowed = 0;
 	bool in_openlist = false;
 	bool wait_at_goal = false; // the action is to wait at the goal vertex or not. This is used for >lenghth constraints
     bool is_goal = false;
@@ -37,6 +38,7 @@ public:
 	{
 		bool operator()(const LLNode* n1, const LLNode* n2) const // returns true if n1 > n2
 		{
+			if (n1->num_of_conflicts_windowed == n2->num_of_conflicts_windowed){
 			if (n1->num_of_conflicts == n2->num_of_conflicts)
 			{
                 if (n1->g_val + n1->h_val == n2->g_val + n2->h_val)
@@ -51,13 +53,41 @@ public:
 			}
 			return n1->num_of_conflicts >= n2->num_of_conflicts;  // n1 > n2 if it has more conflicts
 		}
+		return n1->num_of_conflicts_windowed >= n2->num_of_conflicts_windowed;}
 	};  // used by FOCAL (heap) to compare nodes (top of the heap has min number-of-conflicts)
+
+	// struct windowed_secondary_compare_node
+	// {
+	// 	bool operator()(const LLNode* n1, const LLNode* n2) const // returns true if n1 > n2
+	// 	{
+	// 		if (n1->num_of_conflicts_windowed == n2->num_of_conflicts_windowed)
+	// 		{
+	// 			if (n1->num_of_conflicts == n2->num_of_conflicts)
+	// 			{
+	// 				if (n1->g_val + n1->h_val == n2->g_val + n2->h_val)
+	// 				{
+	// 					if (n1->h_val == n2->h_val)
+	// 					{
+	// 						return rand() % 2 == 0;   // break ties randomly
+	// 					}
+	// 					return n1->h_val >= n2->h_val;  // break ties towards smaller h_vals (closer to goal location)
+	// 				}
+	// 				return n1->g_val+n1->h_val >= n2->g_val+n2->h_val;  // break ties towards smaller f_vals (prefer shorter solutions)
+	// 			}
+	// 			return n1->num_of_conflicts >= n2->num_of_conflicts;  // n1 > n2 if it has more conflicts
+	// 		}
+	// 		return n1->num_of_conflicts_windowed >= n2->num_of_conflicts_windowed;
+	// 	}
+	// };  // used by FOCAL (heap) to compare nodes (top of the heap has min number-of-conflicts)
 
 
 	LLNode() {}
 	LLNode(int location, int g_val, int h_val, LLNode* parent, int timestep, int num_of_conflicts) :
 		location(location), g_val(g_val), h_val(h_val), parent(parent), timestep(timestep),
-		num_of_conflicts(num_of_conflicts) {}
+		num_of_conflicts(num_of_conflicts) { num_of_conflicts_windowed = num_of_conflicts;}
+	LLNode(int location, int g_val, int h_val, LLNode* parent, int timestep, int num_of_conflicts,int num_of_conflicts_windowed) :
+		location(location), g_val(g_val), h_val(h_val), parent(parent), timestep(timestep),
+		num_of_conflicts(num_of_conflicts), num_of_conflicts_windowed(num_of_conflicts_windowed) {}
 	LLNode(const LLNode& other) { copy(other); }
     ~LLNode()= default;
 
@@ -86,8 +116,11 @@ public:
     uint64_t num_runs = 0;
 
     int num_collisions = -1;
+	int num_windowed_collisions = -1;
 	double runtime_build_CT = 0; // runtimr of building constraint table
 	double runtime_build_CAT = 0; // runtime of building conflict avoidance table
+
+	int commit_window = -1;
 
 	int start_location;
 	int goal_location;

@@ -68,7 +68,8 @@ bool LNS::run()
     if (has_initial_solution)
         succ = fixInitialSolution();
     else
-        succ = getInitialSolution();
+        //succ = getInitialSolution();
+        succ = false; //testing, we just start with lns2
     initial_solution_runtime = ((fsec)(Time::now() - start_time)).count();
     if (!succ && initial_solution_runtime < time_limit)
     {
@@ -76,6 +77,7 @@ bool LNS::run()
         {
             init_lns = new InitLNS(instance, agents, time_limit - initial_solution_runtime,
                     replan_algo_name,init_destory_name, neighbor_size, screen);
+            init_lns->commit_window = commit_window;
             succ = init_lns->run();
             if (succ) // accept new paths
             {
@@ -159,12 +161,17 @@ bool LNS::run()
         // store the neighbor information
         neighbor.old_paths.resize(neighbor.agents.size());
         neighbor.old_sum_of_costs = 0;
+        neighbor.old_sum_of_costs_target = 0;
         for (int i = 0; i < (int)neighbor.agents.size(); i++)
         {
             if (replan_algo_name == "PP")
                 neighbor.old_paths[i] = agents[neighbor.agents[i]].path;
             path_table.deletePath(neighbor.agents[i], agents[neighbor.agents[i]].path);
             neighbor.old_sum_of_costs += agents[neighbor.agents[i]].path.size() - 1;
+            if (neighbor.old_paths[i].size() > 1)
+            {
+                neighbor.old_sum_of_costs_target += agents[neighbor.agents[i]].path.size() - 1 + stay_target[neighbor.agents[i]];
+            }
         }
 
         if (replan_algo_name == "EECBS")
@@ -181,13 +188,21 @@ bool LNS::run()
 
         if (ALNS) // update destroy heuristics
         {
-            if (neighbor.old_sum_of_costs > neighbor.sum_of_costs )
-                destroy_weights[selected_neighbor] =
-                        reaction_factor * (neighbor.old_sum_of_costs - neighbor.sum_of_costs) / neighbor.agents.size()
-                        + (1 - reaction_factor) * destroy_weights[selected_neighbor];
-            else
-                destroy_weights[selected_neighbor] =
-                        (1 - decay_factor) * destroy_weights[selected_neighbor];
+            // if (target_considered)
+            // {
+
+            // }
+            // else
+            // {
+                if (neighbor.old_sum_of_costs > neighbor.sum_of_costs )
+                    destroy_weights[selected_neighbor] =
+                            reaction_factor * (neighbor.old_sum_of_costs - neighbor.sum_of_costs) / neighbor.agents.size()
+                            + (1 - reaction_factor) * destroy_weights[selected_neighbor];
+                else
+                    destroy_weights[selected_neighbor] =
+                            (1 - decay_factor) * destroy_weights[selected_neighbor];
+            //}
+            
         }
         runtime = ((fsec)(Time::now() - start_time)).count();
         sum_of_costs += neighbor.sum_of_costs - neighbor.old_sum_of_costs;
@@ -628,6 +643,7 @@ bool LNS::runPIBT(){
         updatePIBTResult(P.getA(),shuffled_agents);
     return result;
 }
+
 bool LNS::runWinPIBT(){
     auto shuffled_agents = neighbor.agents;
     std::random_shuffle(shuffled_agents.begin(), shuffled_agents.end());
@@ -1396,6 +1412,8 @@ void LNS::clearAll(const string & destory_name)
     neighbor.agents.clear();
     neighbor.sum_of_costs = 0;
     neighbor.old_sum_of_costs = 0;
+    neighbor.old_sum_of_costs_target = 0;
+    neighbor.sum_of_costs_target = 0;
     neighbor.colliding_pairs.clear();
     neighbor.old_colliding_pairs.clear();
     neighbor.old_paths.clear();

@@ -158,6 +158,7 @@ int main(int argc, char** argv)
                 vm["sipp"].as<bool>(),
                 vm["truncatePaths"].as<bool>(),
                 screen, pipp_option);
+        lns.commit_window = commit_step;
         while(!commited_done)
         {
             //update start locations
@@ -176,6 +177,7 @@ int main(int argc, char** argv)
             if (initial_run)
             {
                 //run lns to get next commit
+                lns.setRuntimeLimit(step_time*commit_step);
                 succ = lns.run();
                 if (succ)
                 {
@@ -192,6 +194,7 @@ int main(int argc, char** argv)
                 }
                 lns.writePathsToFile("InitialPath.txt");
                 initial_run = false;
+                return 0;
             }
             else
             {
