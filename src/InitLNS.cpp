@@ -40,15 +40,18 @@ bool InitLNS::run()
     start_time = Time::now();
     bool succ = getInitialSolutionBySPC();
     runtime = ((fsec)(Time::now() - start_time)).count();
-    iteration_stats.emplace_back(neighbor.agents.size(), sum_of_costs, runtime, "PP", 0, num_of_colliding_pairs);
+    iteration_stats.emplace_back(neighbor.agents.size(), sum_of_costs, runtime, "PP", 0, num_of_colliding_pairs,num_of_colliding_pairs_windowed);
     if (screen >= 3)
         printPath();
     if (screen >= 1)
+    {
         cout << "Iteration " << iteration_stats.size() << ", "
              << "group size = " << neighbor.agents.size() << ", "
              << "colliding pairs = " << num_of_colliding_pairs << ", "
              << "solution cost = " << sum_of_costs << ", "
              << "remaining time = " << time_limit - runtime << endl;
+        cout<<"old colliding pairs windowed = "<<num_of_colliding_pairs_windowed<<endl;
+    }
     if (runtime >= time_limit and !succ)
     {
         printResult();
@@ -232,25 +235,13 @@ bool InitLNS::run()
                     << "remaining time = " << time_limit - runtime << endl;
             cout<<"old colliding pairs windowed = "<<num_of_colliding_pairs_windowed<<endl;
         }
+        iteration_stats.emplace_back(neighbor.agents.size(), sum_of_costs, runtime, replan_algo_name,
+                                    0, num_of_colliding_pairs,num_of_colliding_pairs_windowed);
     }
-
-    iteration_stats.emplace_back(neighbor.agents.size(), sum_of_costs, runtime, replan_algo_name,
-                                    0, num_of_colliding_pairs);
     conflicts_in_commit_window.push_back(num_of_colliding_pairs_windowed);
     conflicts_all.push_back(num_of_colliding_pairs);
 
     printResult();
-    cout<<"conflicts with iterations in window"<<endl;
-    for (auto c: conflicts_in_commit_window)
-    {
-        cout<<c<<" , ";
-    }
-    cout<<endl<<"conflicts with iterations"<<endl;
-    for (auto c: conflicts_all)
-    {
-        cout<<c<<" , ";
-    }
-    cout<<endl;
     return (num_of_colliding_pairs == 0);
 }
 // bool InitLNS::runGCBS()
@@ -473,18 +464,6 @@ bool InitLNS::runTimePP()
                  ", windowed colliding pairs = " << neighbor.colliding_pairs_windowed.size() <<
                  ", LL nodes = " << agents[id].path_planner->getNumExpanded() <<
                  ", remaining time = " << time_limit - runtime << " seconds. " << endl;
-            cout<<"windowed collidings:"<<endl;
-            for (auto conflict: neighbor.colliding_pairs_windowed)
-            {
-                cout<<"("<<std::get<0>(conflict)<<","<<std::get<1>(conflict)<<","<<std::get<2>(conflict)<<")";
-            }
-            cout<<endl;
-            cout<<"other collidings:"<<endl;
-            for (auto conflict: neighbor.colliding_pairs)
-            {
-                cout<<"("<<std::get<0>(conflict)<<","<<std::get<1>(conflict)<<","<<std::get<2>(conflict)<<")";
-            }
-            cout<<endl;
         }
         if (neighbor.colliding_pairs_windowed.size() > neighbor.old_colliding_pairs_windowed.size())
             break;
@@ -550,17 +529,13 @@ bool InitLNS::getInitialSolutionBySPC() //solely by individual shortest path
     collidingSet colliding_pairs;
     collidingSet colliding_pairs_windowed;
 
-    bool first = true;
     for (auto id : neighbor.agents)
     {
         agents[id].path_planner->commit_window = commit_window;
         agents[id].path = agents[id].path_planner->findPath(constraint_table);
         assert(!agents[id].path.empty() && agents[id].path.back().location == agents[id].path_planner->goal_location);
         //check all because we are using single agent shorest path
-        if (!first)
-            updateCollidingPairsByTime(colliding_pairs,colliding_pairs_windowed, agents[id].id, agents[id].path); //windowed
-        else
-            first = false;
+        updateCollidingPairsByTime(colliding_pairs,colliding_pairs_windowed, agents[id].id, agents[id].path); //windowed
 
         sum_of_costs += (int)agents[id].path.size() - 1;
         remaining_agents--;
@@ -580,6 +555,7 @@ bool InitLNS::getInitialSolutionBySPC() //solely by individual shortest path
 
     num_of_colliding_pairs_windowed = colliding_pairs_windowed.size();
     num_of_colliding_pairs = colliding_pairs.size() + num_of_colliding_pairs_windowed;
+    cout<<"test for colliding pairs: "<<colliding_pairs.size()<<" "<<colliding_pairs_windowed.size()<<endl;
     for(const auto& collidings : colliding_pairs) //update what in remained into total colliding pairs
     {
         //we need to update by time
@@ -1230,8 +1206,8 @@ void InitLNS::writeIterStatsToFile(const string & file_name) const
     output << //"num of agents," <<
            "sum of costs," <<
            "num of colliding pairs," <<
-           "runtime" << //"," <<
-           //"MAPF algorithm" <<
+           "num of windowed collidiing pairs" << "," <<
+           "runtime" <<
            endl;
 
     for (const auto &data : iteration_stats)
@@ -1239,8 +1215,8 @@ void InitLNS::writeIterStatsToFile(const string & file_name) const
         output << //data.num_of_agents << "," <<
                data.sum_of_costs << "," <<
                data.num_of_colliding_pairs << "," <<
-               data.runtime << //"," <<
-               // data.algorithm <<
+               data.num_of_windowed_colliding_pairs << "," <<
+               data.runtime <<
                endl;
     }
     output.close();
@@ -1350,6 +1326,28 @@ void InitLNS::printResult()
          << "solution cost = " << sum_of_costs << ", "
          << "initial solution cost = " << iteration_stats.front().sum_of_costs << ", "
          << "failed iterations = " << num_of_failures << endl;
+    cout << "initial windowed colliding pairs = " << iteration_stats.front().num_of_windowed_colliding_pairs<<","
+         << "final windowed colliding pairs = " << num_of_colliding_pairs_windowed<<endl;
+    cout << "iterations stats (colliding pairs): "<<endl;
+    for (auto iter: iteration_stats)
+    {
+        cout<<iter.num_of_colliding_pairs<<",";
+    } 
+    cout <<endl<<"iterations stats (windowed colliding pairs): "<<endl;
+    for (auto iter: iteration_stats)
+    {
+        cout<<iter.num_of_windowed_colliding_pairs<<",";
+    } 
+    cout <<endl<<"iterations stats (runtime): "<<endl;
+    for (auto iter: iteration_stats)
+    {
+        cout<<iter.runtime<<",";
+    } 
+    cout <<endl<<"iterations stats (sic): "<<endl;
+    for (auto iter: iteration_stats)
+    {
+        cout<<iter.sum_of_costs<<",";
+    } 
 }
 
 void InitLNS::clear()
@@ -1357,6 +1355,7 @@ void InitLNS::clear()
     path_table.clear();
     //collision_graph.clear();
     //collision_graph_windowed.clear();
+    total_colliding_pairs.clear();
     goal_table.clear();
 }
 
