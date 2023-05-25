@@ -22,7 +22,6 @@ void SIPP::updatePath(const LLNode* goal, vector<PathEntry> &path)
 	}
 	assert(curr->timestep == 0);
 	path[0].location = curr->location;
-    cout<<"single agent: "<<goal->num_of_conflicts_windowed<<endl;
 }
 
 

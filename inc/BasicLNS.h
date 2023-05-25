@@ -35,6 +35,14 @@ struct CollisionGraphCmpByTime
         {
             return false;
         }
+        if (std::get<2>(a) == std::get<2>(b))
+        {
+            if (std::get<0>(a) == std::get<0>(b))
+            {
+                return std::get<1>(a) < std::get<1>(b);
+            }
+            return std::get<0>(a) < std::get<0>(b);
+        }
         return std::get<2>(a) < std::get<2>(b);
     }
 };
