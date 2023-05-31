@@ -3,21 +3,6 @@
 
 enum init_destroy_heuristic { TARGET_BASED, COLLISION_BASED, RANDOM_BASED, INIT_COUNT };
 
-// struct CollisionGraphCmpByTime
-// {
-//     bool operator() (const tuple<int,int,int> &a, const tuple<int,int,int> &b)
-//     {
-//         // if (a.first == b.first)
-//         //     return false;
-//         // return a.second > b.second;
-//         if (std::get<0>(a) == std::get<0>(b) && std::get<1>(a) == std::get<1>(b))
-//         {
-//             return false;
-//         }
-//         return std::get<2>(a) > std::get<2>(b);
-//     }
-// };
-
 class InitLNS : public BasicLNS
 {
 public:
@@ -56,8 +41,10 @@ private:
     // //maybe we also need to know the conflict time?
     // vector<set<int>> collision_graph_windowed;
     //collision graph with time, <agent1,agent2,time>
-    typedef set<tuple<int,int,int>,CollisionGraphCmpByTime> collidingSet;
+    //typedef unorderedset<tuple<int,int,int>,CollisionGraphHash,CollisionGraphEqual> collidingSet;
+    //typedef unordered_set<tuple<int,int,int>,CollisionGraphHash,CollisionGraphEqual> collidingSet;
     collidingSet total_colliding_pairs;
+    //std::priority_queue<tuple<int,int,int>, vector<tuple<int,int,int>>, CollisionQueueCmp> colliding_pq; //we need to store also by ordered by time, in order to solve as early as possible
     vector<int> goal_table;
 
 

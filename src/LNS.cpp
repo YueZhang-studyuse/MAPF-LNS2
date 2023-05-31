@@ -53,6 +53,28 @@ LNS::LNS(const Instance& instance, double time_limit, string init_algo_name, str
     
 }
 
+bool LNS::runCommitInitPIBT()
+{
+    initial_solution_runtime = 0;
+    start_time = Time::now();
+    bool succ;
+    auto shuffled_agents = neighbor.agents;
+    std::random_shuffle(shuffled_agents.begin(), shuffled_agents.end());
+
+    MAPF P = preparePIBTProblem(shuffled_agents);
+
+    // seed for solver
+    auto MT_S = new std::mt19937(0);
+    PIBT solver(&P,MT_S);
+    solver.setTimeLimit(time_limit);
+    solver.max_timestep = commit_window;
+    bool result = solver.solve();
+    if (result)
+        updatePIBTResult(P.getA(),shuffled_agents);
+    initial_solution_runtime = ((fsec)(Time::now() - start_time)).count();
+    return result;
+}
+
 bool LNS::run()
 {
     // only for statistic analysis, and thus is not included in runtime

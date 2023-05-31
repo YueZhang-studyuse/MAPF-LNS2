@@ -14,6 +14,7 @@
 #include <boost/unordered_set.hpp>
 #include <boost/unordered_map.hpp>
 #include <map>
+#include <queue>
 
 using boost::heap::pairing_heap;
 using boost::heap::compare;

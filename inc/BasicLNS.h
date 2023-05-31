@@ -3,6 +3,7 @@
 #include "SpaceTimeAStar.h"
 #include "SIPP.h"
 
+
 struct Agent
 {
     int id;
@@ -24,28 +25,37 @@ struct Agent
     }
 };
 
-struct CollisionGraphCmpByTime
+struct CollisionGraphHash
 {
-    bool operator() (const tuple<int,int,int> &a, const tuple<int,int,int> &b)
+    size_t operator()(const tuple<int,int,int>& collding) const
     {
-        // if (a.first == b.first)
-        //     return false;
-        // return a.second > b.second;
-        if (std::get<0>(a) == std::get<0>(b) && std::get<1>(a) == std::get<1>(b))
-        {
-            return false;
-        }
-        if (std::get<2>(a) == std::get<2>(b))
-        {
-            if (std::get<0>(a) == std::get<0>(b))
-            {
-                return std::get<1>(a) < std::get<1>(b);
-            }
-            return std::get<0>(a) < std::get<0>(b);
-        }
-        return std::get<2>(a) < std::get<2>(b);
+        size_t a1_hash = std::hash<int>()(std::get<0>(collding));
+        size_t a2_hash = std::hash<int>()(std::get<1>(collding));
+        return a1_hash ^ a2_hash;
     }
 };
+
+struct CollisionGraphEqual
+{
+    bool operator()(const tuple<int,int,int>& collding1, const tuple<int,int,int>& collding2) const
+    {
+        return std::get<0>(collding1) == std::get<0>(collding2) && std::get<1>(collding1) == std::get<1>(collding2);
+    }
+};
+
+struct CollisionQueueCmp
+{
+    size_t operator()(const tuple<int,int,int>& collding1, const tuple<int,int,int>& collding2) const
+    {
+        if (std::get<2>(collding1) == std::get<2>(collding2))
+        {
+            return rand() > 0.5; //we give some randanness for conflicts with the same timestep
+        }
+        return std::get<2>(collding1) > std::get<2>(collding2);
+    }
+};
+
+typedef unordered_set<tuple<int,int,int>,CollisionGraphHash,CollisionGraphEqual> collidingSet;
 
 
 struct Neighbor
@@ -66,7 +76,7 @@ struct Neighbor
     // set<pair<int, int>> old_colliding_pairs_windowed;
 
     //maybe it is easier we change it to a map?
-    typedef set<tuple<int,int,int>,CollisionGraphCmpByTime> collidingSet;
+    // typedef unordered_set<tuple<int,int,int>,CollisionGraphHash,CollisionGraphEqual> collidingSet;
     collidingSet colliding_pairs;
     collidingSet old_colliding_pairs;
     //we still need windowed because we want to compare 
