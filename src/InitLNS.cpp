@@ -205,6 +205,7 @@ bool InitLNS::run()
         //     }
         if (screen >= 2)
             cout << "New colliding pairs = " << neighbor.colliding_pairs.size() << endl;
+        if (screen >= 2)
             cout <<"New windowed colliding pairs = "<< neighbor.colliding_pairs_windowed.size() <<endl;
         if (succ) // update collision graph
         {

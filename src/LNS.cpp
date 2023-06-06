@@ -829,8 +829,11 @@ void LNS::updatePIBTResult(const PIBT_Agents& A, vector<int>& shuffled_agents){
     }
 
     neighbor.sum_of_costs =soc;
-    for (const auto& agent : agents)
-        cout << "Agent " << agent.id << ": " << agent.path << endl;
+    if(screen>=2)
+    {
+        for (const auto& agent : agents)
+            cout << "Agent " << agent.id << ": " << agent.path << endl;
+    }
 }
 
 void LNS::chooseDestroyHeuristicbyALNS()
