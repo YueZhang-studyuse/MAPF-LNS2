@@ -885,6 +885,27 @@ void InitLNS::printResult()
          << "solution cost = " << sum_of_costs << ", "
          << "initial solution cost = " << iteration_stats.front().sum_of_costs << ", "
          << "failed iterations = " << num_of_failures << endl;
+
+    for (auto iter: iteration_stats)
+    {
+        cout<<iter.num_of_colliding_pairs<<",";
+    } 
+    // cout <<endl<<"iterations stats (windowed colliding pairs): "<<endl;
+    // for (auto iter: iteration_stats)
+    // {
+    //     cout<<iter.num_of_windowed_colliding_pairs<<",";
+    // } 
+    cout <<endl<<"iterations stats (runtime): "<<endl;
+    for (auto iter: iteration_stats)
+    {
+        cout<<iter.runtime<<",";
+    } 
+    cout <<endl<<"iterations stats (sic): "<<endl;
+    for (auto iter: iteration_stats)
+    {
+        cout<<iter.sum_of_costs<<",";
+    } 
+    cout<<endl;
 }
 
 void InitLNS::clear()
