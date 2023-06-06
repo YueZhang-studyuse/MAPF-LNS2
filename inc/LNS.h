@@ -55,6 +55,14 @@ public:
     void setRuntimeLimit(int time){time_limit = time; replan_time_limit = time_limit / 100;}
     void clearAll(const string & destory_name);
 
+    bool runCommitInitPIBT();
+    void validateSolutionByWindow(int window) const;
+    void initialCommitPIBT(int commit_step, vector<list<int>> &commit_path, vector<list<int>> &future_path,bool skip_start,int current_time);
+    bool has_conflict_last_commit = false;
+    bool runLns2(bool has_initial, bool conflict_in_window);
+    int lns2_solutin_conflicts = 0;
+    void validateSolutionDebugMode() const;
+
     bool target_considered = true;
 
     int commit_window = -1;
@@ -62,6 +70,7 @@ public:
 private:
     InitLNS* init_lns = nullptr;
     bool has_initial_solution = false;
+    bool initial_solution_feasible = false;
     string init_algo_name;
     string replan_algo_name;
     bool use_init_lns; // use LNS to find initial solutions

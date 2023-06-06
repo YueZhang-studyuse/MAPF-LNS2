@@ -177,7 +177,7 @@ int main(int argc, char** argv)
             if (initial_run)
             {
                 //run lns to get next commit
-                lns.setRuntimeLimit(step_time*commit_step);
+                lns.setRuntimeLimit(10);
                 succ = lns.run();
                 if (succ)
                 {
@@ -198,17 +198,6 @@ int main(int argc, char** argv)
             }
             else
             {
-                // LNS lns(instance, step_time*commit_step,
-                // vm["initAlgo"].as<string>(),
-                // vm["replanAlgo"].as<string>(),
-                // vm["destoryStrategy"].as<string>(),
-                // vm["neighborSize"].as<int>(),
-                // max_iterations,
-                // vm["initLNS"].as<bool>(),
-                // vm["initDestoryStrategy"].as<string>(),
-                // vm["sipp"].as<bool>(),
-                // vm["truncatePaths"].as<bool>(),
-                // screen, pipp_option);
                 lns.clearAll(vm["destoryStrategy"].as<string>());
                 lns.setIterations(max_iterations);
                 lns.setRuntimeLimit(step_time*commit_step);
@@ -298,19 +287,6 @@ int main(int argc, char** argv)
 
             }
         }
-        //maybe add a validation to see if solution is correct
-        // LNS lns(instance, step_time*commit_step,
-        //         vm["initAlgo"].as<string>(),
-        //         vm["replanAlgo"].as<string>(),
-        //         vm["destoryStrategy"].as<string>(),
-        //         vm["neighborSize"].as<int>(),
-        //         max_iterations,
-        //         vm["initLNS"].as<bool>(),
-        //         vm["initDestoryStrategy"].as<string>(),
-        //         vm["sipp"].as<bool>(),
-        //         vm["truncatePaths"].as<bool>(),
-        //         screen, pipp_option);
-        //lns.setIterations(max_iterations);
         lns.validateCommitSolution(commited_paths);
         cout<<"num of commits per step:"<<endl;
         cout<<commit_step<<endl;
@@ -322,16 +298,229 @@ int main(int argc, char** argv)
             cout<<sic<<" ";
         }
         cout<<endl;
-        // cout<<"commit paths:"<<endl;
-        // for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
-        // {
-        //     for (auto vertex: commited_paths[i])
-        //     {
-        //         cout<<vertex<<", ";
-        //     }
-        //     cout<<endl;
-        // }
-        // cout<<endl;
+    }
+    else if (vm["solver"].as<string>() == "LNS2-Online") // my commit lns
+    {
+        double initial_time = 300;
+        double step_time = 1;
+        double commit_step = vm["commitStep"].as<int>();
+        int max_iterations = MAX_TIMESTEP;
+        //note here I put future path start = commited path (I assume start at timestep 0?)
+        vector<list<int>> commited_paths;
+        vector<list<int>> future_paths;
+        commited_paths.resize(instance.getDefaultNumberOfAgents());
+        future_paths.resize(instance.getDefaultNumberOfAgents());
+        bool commited_done = false;
+        bool initial_run = true;
+        bool solution_feasible = false;
+        double total_step = 0;
+        list<int> solution_costs;
+        LNS lns(instance, initial_time,
+                vm["initAlgo"].as<string>(),
+                vm["replanAlgo"].as<string>(),
+                vm["destoryStrategy"].as<string>(),
+                vm["neighborSize"].as<int>(),
+                max_iterations,
+                vm["initLNS"].as<bool>(),
+                vm["initDestoryStrategy"].as<string>(),
+                vm["sipp"].as<bool>(),
+                vm["truncatePaths"].as<bool>(),
+                screen, pipp_option);
+        lns.commit_window = commit_step;
+        lns.setRuntimeLimit(step_time*commit_step);
+        while(!commited_done)
+        {
+            //update start locations
+            for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
+            {
+                if (commited_paths[i].size()>0) 
+                {
+                    //change instance.start locations according commited_paths
+                    instance.setStart(i,commited_paths[i].back());
+                }
+                //else we do nothing, just keep as in instances
+            }
+            //we break up into two situations: 
+            //1. solution still infeasible (use lns2), 2. solution feasible (use lns)
+            bool succ;
+            if (initial_run || !solution_feasible)
+            {
+                std::cout<<"run lns2 commit"<<std::endl;
+                if (!initial_run)
+                {
+                    lns.clearAll(vm["destoryStrategy"].as<string>());
+                    if (!lns.loadPaths(future_paths))
+                    {
+                        cerr << "The input path wrong" << endl;
+                        exit(-1);
+                    }
+                }
+                //run lns to get next commit
+                succ = lns.runLns2(!initial_run,false); 
+                if (succ)
+                {
+                    std::cout<<"test 1"<<endl;
+                    //lns.validateSolutionByWindow(commit_step);
+                    std::cout<<"test 2"<<endl;
+                    std::cout<<"colliding pairs: "<<lns.lns2_solutin_conflicts<<std::endl;
+                    lns.validateSolutionDebugMode();
+                    std::cout<<"test 3"<<endl;
+                    future_paths.clear();
+                    future_paths.resize(instance.getDefaultNumberOfAgents());
+                    if (initial_run)
+                        lns.commitPath(commit_step,commited_paths,future_paths,false,total_step);
+                    else
+                        lns.commitPath(commit_step,commited_paths,future_paths,true,total_step);
+                    if (lns.lns2_solutin_conflicts == 0)
+                        solution_feasible = true;
+                    solution_costs.emplace_back(lns.sum_of_costs);
+                    total_step+=commit_step;
+                    int sic = 0;
+                    for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
+                    {
+                        auto path = commited_paths[i];
+                        sic+= path.size()-1;
+                        if (path.back() == instance.getGoals()[i])
+                        {
+                            bool first = true;
+                            for (auto it = path.rbegin(); it != path.rend();++it)
+                            {
+                                if (first)
+                                {
+                                    first = false;
+                                    continue;
+                                }
+                                if (*it == instance.getGoals()[i])
+                                {
+                                    sic--;
+                                }
+                            }
+                        }
+                        sic+=future_paths[i].size()-1;
+                    }
+                    solution_costs.emplace_back(sic);
+                    total_step+=commit_step;
+                    //std::cout<<"Preprocessing time: "<<lns.preprocessing_time<<std::endl;
+                }
+                else
+                {
+                    cerr << "Initialise LNS2 failed" << endl;
+                    exit(-1);
+                }
+                lns.writePathsToFile("InitialPath.txt");
+                initial_run = false;
+            }
+            else
+            {
+                lns.clearAll(vm["destoryStrategy"].as<string>());
+                //lns.setIterations(max_iterations);
+                //lns.setRuntimeLimit(step_time*commit_step);
+                //load initial path
+                if (!lns.loadPaths(future_paths))
+                {
+                    cerr << "The input path wrong" << endl;
+                    exit(-1);
+                }
+                succ = lns.run();
+                if (succ)
+                {
+                    //lns.validateSolutionByWindow(commit_step);
+                    future_paths.clear();
+                    future_paths.resize(instance.getDefaultNumberOfAgents());
+                    lns.commitPath(commit_step,commited_paths,future_paths,true,total_step);
+                    int sic = 0;
+                    for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
+                    {
+                        auto path = commited_paths[i];
+                        sic+= path.size()-1;
+                        if (path.back() == instance.getGoals()[i])
+                        {
+                            bool first = true;
+                            for (auto it = path.rbegin(); it != path.rend();++it)
+                            {
+                                if (first)
+                                {
+                                    first = false;
+                                    continue;
+                                }
+                                if (*it == instance.getGoals()[i])
+                                {
+                                    sic--;
+                                }
+                            }
+                        }
+                        sic+=future_paths[i].size()-1;
+                        if (sic > solution_costs.back())
+                        {
+                            cout<<"commit paths:"<<endl;
+                            for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
+                            {
+                                for (auto vertex: commited_paths[i])
+                                {
+                                    cout<<vertex<<", ";
+                                }
+                                cout<<endl;
+                            }
+                            cout<<endl;  
+                            cout<<"future paths"<<endl;
+                            for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
+                            {
+                                for (auto vertex: future_paths[i])
+                                {
+                                    cout<<vertex<<", ";
+                                }
+                                cout<<endl;
+                            }
+                            cout<<endl;
+                        }
+                    }
+                    solution_costs.emplace_back(sic);
+                    total_step+=commit_step;
+                }
+                else
+                {
+                    cerr << "Iteration failed" << endl;
+                    exit(-1);
+                }
+                //check if commit is done
+                if (!commited_paths[0].empty())
+                {
+                    for (auto path: future_paths)
+                    {
+                        if (path.size() <= 1) //first path is the start location
+                            commited_done = true;
+                        else
+                        {
+                            commited_done = false;
+                            break;
+                        }    
+                    }
+
+                }
+            }
+        }
+        cout<<"commited path: "<<endl;;
+        for (int i = 0; i < commited_paths.size(); i++)
+        {
+            cout<<"agent "<<i<<" ";
+            for (auto p: commited_paths[i])
+            {
+                cout<<p<<",";
+            }
+            cout<<endl;
+        }
+        cout<<endl;
+        lns.validateCommitSolution(commited_paths);
+        cout<<"num of commits per step:"<<endl;
+        cout<<commit_step<<endl;
+        cout<<"time per step:"<<endl;
+        cout<<step_time<<endl;
+        cout<<"sic in iterations:"<<endl;
+        for(auto sic: solution_costs)
+        {
+            cout<<sic<<" ";
+        }
+        cout<<endl;
     }
 	else
     {

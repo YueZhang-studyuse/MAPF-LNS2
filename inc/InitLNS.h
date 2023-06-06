@@ -28,6 +28,9 @@ public:
     //for testing purpose
     list<int> conflicts_in_commit_window;
     list<int> conflicts_all;
+    bool check_initial = false;
+    bool attachInitialSolutionBySPC();
+    
 
 
 private:

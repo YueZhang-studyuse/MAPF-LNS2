@@ -38,7 +38,8 @@ InitLNS::InitLNS(const Instance& instance, vector<Agent>& agents, double time_li
 bool InitLNS::run()
 {
     start_time = Time::now();
-    bool succ = getInitialSolutionBySPC();
+    //bool succ = getInitialSolutionBySPC();
+    bool succ = attachInitialSolutionBySPC();
     runtime = ((fsec)(Time::now() - start_time)).count();
     iteration_stats.emplace_back(neighbor.agents.size(), sum_of_costs, runtime, "PP", 0, num_of_colliding_pairs,num_of_colliding_pairs_windowed);
     if (screen >= 3)
@@ -82,7 +83,14 @@ bool InitLNS::run()
         //         cerr << "Wrong neighbor generation strategy" << endl;
         //         exit(-1);
         // }
+        //std::cout<<"size "<<colliding_pq.size()<<std::endl;
         succ = generateNeighborByEarlyConflict(); //my strategy, generate neighbor by earlier conflict first
+        // if (neighbor.agents.empty())
+        // {
+        //     std::cout<<total_colliding_pairs.size()<<std::endl;
+        //     std::cout<<colliding_pq.size()<<std::endl;
+        //     break;
+        // }
         
         if(!succ || neighbor.agents.empty())
         {
@@ -216,10 +224,12 @@ bool InitLNS::run()
             for(const auto& agent_pair : neighbor.colliding_pairs)
             {
                 total_colliding_pairs.emplace(agent_pair);
+                //colliding_pq.push(agent_pair);
             }
             for(const auto& agent_pair : neighbor.colliding_pairs_windowed)
             {
                 total_colliding_pairs.emplace(agent_pair);
+                //colliding_pq.push(agent_pair);
             }
             if (screen >= 2)
                 printCollisionGraph();
@@ -242,7 +252,9 @@ bool InitLNS::run()
     conflicts_all.push_back(num_of_colliding_pairs);
 
     printResult();
-    return (num_of_colliding_pairs == 0);
+    if (commit_window == -1)
+        return (num_of_colliding_pairs == 0);
+    return (num_of_colliding_pairs_windowed == 0);
 }
 // bool InitLNS::runGCBS()
 // {
@@ -448,7 +460,10 @@ bool InitLNS::runTimePP()
     while (p != shuffled_agents.end() && ((fsec)(Time::now() - time)).count() < T)
     {
         int id = *p;
+        agents[id].path_planner->commit_window = commit_window;
         agents[id].path = agents[id].path_planner->findPath(constraint_table);
+        if (agents[id].path.empty() || agents[id].path.back().location != agents[id].path_planner->goal_location)
+            break;
         assert(!agents[id].path.empty() && agents[id].path.back().location == agents[id].path_planner->goal_location);
         if (agents[id].path_planner->num_collisions > 0)
             updateCollidingPairsByTime(neighbor.colliding_pairs,neighbor.colliding_pairs_windowed, agents[id].id, agents[id].path);
@@ -465,6 +480,14 @@ bool InitLNS::runTimePP()
                  ", LL nodes = " << agents[id].path_planner->getNumExpanded() <<
                  ", remaining time = " << time_limit - runtime << " seconds. " << endl;
         }
+        // for (auto c: neighbor.colliding_pairs)
+        // {
+        //     int a1,a2,t;
+        //     tie(a1,a2,t) = c;
+        //     if (a1 == 189 || a1 == 218 || a2 == 189 || a2 == 218)
+        //         cout<<"test for collidings "<<a1<<" "<<a2<<" "<<t<<" , ";
+        //     cout<<endl;
+        // }
         if (neighbor.colliding_pairs_windowed.size() > neighbor.old_colliding_pairs_windowed.size())
             break;
         if (neighbor.colliding_pairs_windowed.size() == neighbor.old_colliding_pairs_windowed.size() && neighbor.colliding_pairs.size() >= neighbor.old_colliding_pairs.size())
@@ -505,6 +528,125 @@ bool InitLNS::runTimePP()
         }
         return false;
     }
+}
+
+bool InitLNS::attachInitialSolutionBySPC()
+{
+    collidingSet colliding_pairs;
+    collidingSet colliding_pairs_windowed;
+    neighbor.agents.clear();
+    neighbor.agents.reserve(agents.size());
+    sum_of_costs = 0;
+    auto goals = instance.getGoals();
+    for (int i = 0; i < (int)agents.size(); i++)
+    {
+        if (agents[i].path.empty())
+            neighbor.agents.push_back(i);
+        else
+        {
+            if (agents[i].path.back().location != goals[i])
+            {
+                //attach single agent shorest path
+                list<int> locations;
+                for (auto l: agents[i].path)
+                {
+                    locations.push_back(l.location);
+                }
+                int curr = locations.back();
+                while (curr != goals[i])
+                {
+                    auto neighbors_location = instance.getNeighbors(curr);
+                    int next_loc = curr;
+                    for (auto n: neighbors_location)
+                    {
+                        if (agents[i].path_planner->my_heuristic[n] < agents[i].path_planner->my_heuristic[curr])
+                            next_loc = n; //we simply do this because our heuriscit is computed by dijkstra
+                    }
+                    locations.push_back(next_loc);
+                    curr = next_loc;
+                }
+                //push locations and path together
+                agents[i].path.resize(locations.size());
+                int index = 0;
+                for (auto l: locations)
+                {
+                    agents[i].path[index] = PathEntry(l);
+                    index++;
+                }
+
+            }
+            updateCollidingPairsByTime(colliding_pairs,colliding_pairs_windowed, agents[i].id, agents[i].path);
+            sum_of_costs += (int)agents[i].path.size() - 1;
+            path_table.insertPath(agents[i].id, agents[i].path);
+        }
+    }
+    int remaining_agents = (int)neighbor.agents.size();
+    //start to plan for agents that have empty path
+    ConstraintTable constraint_table(instance.num_of_cols, instance.map_size, nullptr, &path_table);
+    for (auto id : neighbor.agents)
+    {
+        agents[id].path = agents[id].path_planner->findPath(constraint_table);
+        assert(!agents[id].path.empty() && agents[id].path.back().location == agents[id].path_planner->goal_location);
+        if (agents[id].path_planner->num_collisions > 0)
+            updateCollidingPairsByTime(colliding_pairs,colliding_pairs_windowed, agents[id].id, agents[id].path); //windowed
+
+        sum_of_costs += (int)agents[id].path.size() - 1;
+        remaining_agents--;
+        path_table.insertPath(agents[id].id, agents[id].path);
+        runtime = ((fsec)(Time::now() - start_time)).count();
+        if (screen >= 3)
+        {
+            cout << "After agent " << id << ": Remaining agents = " << remaining_agents <<
+                 ", colliding pairs = " << colliding_pairs.size() + colliding_pairs_windowed.size() <<
+                 ", LL nodes = " << agents[id].path_planner->getNumExpanded() <<
+                 ", remaining time = " << time_limit - runtime << " seconds. " << endl;
+            cout << "windowed colliding pairs "<<colliding_pairs_windowed.size()<<endl;
+        }
+        if (runtime > time_limit)
+            break;
+    }
+
+    num_of_colliding_pairs_windowed = colliding_pairs_windowed.size();
+    num_of_colliding_pairs = colliding_pairs.size() + num_of_colliding_pairs_windowed;
+    for(const auto& collidings : colliding_pairs) //update what in remained into total colliding pairs
+    {
+        //we need to update by time
+        auto iter = total_colliding_pairs.find(collidings);
+        if (iter == total_colliding_pairs.end())
+        {
+            total_colliding_pairs.emplace(collidings);
+        }
+        else
+        {
+            if (std::get<2>(collidings) < std::get<2>(*iter))
+            {
+                total_colliding_pairs.erase(iter);
+                total_colliding_pairs.emplace(collidings);
+            }
+        }
+    }
+    for(const auto& collidings : colliding_pairs_windowed) //update what in windowed into total colliding pairs
+    {
+        //we need to update by time
+        auto iter = total_colliding_pairs.find(collidings);
+        if (iter == total_colliding_pairs.end())
+        {
+            total_colliding_pairs.emplace(collidings);
+        }
+        else
+        {
+            if (std::get<2>(collidings) < std::get<2>(*iter))
+            {
+                total_colliding_pairs.erase(iter);
+                total_colliding_pairs.emplace(collidings);
+            }
+        }
+    }
+
+    if (screen >= 2)
+        printCollisionGraph();
+    
+    return remaining_agents == 0;
 }
 
 bool InitLNS::getInitialSolutionBySPC() //solely by individual shortest path
@@ -555,7 +697,6 @@ bool InitLNS::getInitialSolutionBySPC() //solely by individual shortest path
 
     num_of_colliding_pairs_windowed = colliding_pairs_windowed.size();
     num_of_colliding_pairs = colliding_pairs.size() + num_of_colliding_pairs_windowed;
-    cout<<"test for colliding pairs: "<<colliding_pairs.size()<<" "<<colliding_pairs_windowed.size()<<endl;
     for(const auto& collidings : colliding_pairs) //update what in remained into total colliding pairs
     {
         //we need to update by time
@@ -572,6 +713,8 @@ bool InitLNS::getInitialSolutionBySPC() //solely by individual shortest path
                 total_colliding_pairs.emplace(collidings);
             }
         }
+        //also insert to pq, no need to check for update
+        //colliding_pq.push(collidings);
     }
     for(const auto& collidings : colliding_pairs_windowed) //update what in windowed into total colliding pairs
     {
@@ -589,6 +732,7 @@ bool InitLNS::getInitialSolutionBySPC() //solely by individual shortest path
                 total_colliding_pairs.emplace(collidings);
             }
         }
+        //colliding_pq.push(collidings);
     }
 
     if (screen >= 2)
@@ -965,15 +1109,35 @@ bool InitLNS::generateNeighborByEarlyConflict()
         return true;
     }
 
-    set<int> neighbors_set;
+    unordered_set<int> neighbors_set;
+    std::priority_queue<tuple<int,int,int>, vector<tuple<int,int,int>>, CollisionQueueCmp> colliding_pq;
+    //we first need to select top n based on time, so use a pqueue to sort, and track the current largest to filter no need item
+    int max_curr_time = -1;
     for (auto colliding: total_colliding_pairs)
     {
-        if(neighbors_set.size() >= neighbor_size)
-            break;
-        neighbors_set.insert(std::get<0>(colliding));
-        if(neighbors_set.size() >= neighbor_size)
-            break;
-        neighbors_set.insert(std::get<1>(colliding));
+        //we continue because current time > the existing max time and neighbor size already enough
+        if (std::get<2>(colliding) > max_curr_time && neighbors_set.size() >= neighbor_size) 
+            continue;
+        colliding_pq.push(colliding);
+        if (std::get<2>(colliding) > max_curr_time)
+            max_curr_time = std::get<2>(colliding);
+    }
+    while (neighbors_set.size() < neighbor_size && !colliding_pq.empty())
+    {
+        auto curr = colliding_pq.top();
+        if(neighbors_set.size() == neighbor_size - 1)
+        {
+            if (rand() > 0.5)
+                neighbors_set.emplace(std::get<1>(curr));
+            else
+                neighbors_set.emplace(std::get<0>(curr));
+        }
+        else
+        {
+            neighbors_set.emplace(std::get<0>(curr));
+            neighbors_set.emplace(std::get<1>(curr));
+        }
+        colliding_pq.pop();
     }
     neighbor.agents.assign(neighbors_set.begin(), neighbors_set.end());
     if (screen >= 2)
@@ -1278,7 +1442,8 @@ void InitLNS::printCollisionGraph() const
     int edges = 0;
     for (auto colliding: total_colliding_pairs)
     {
-        cout<< "(" << std::get<0>(colliding) << "," << std::get<1>(colliding)<< "," << std::get<2>(colliding) << "),";
+        //if (std::get<2>(colliding) <= commit_window)
+            cout<< "(" << std::get<0>(colliding) << "," << std::get<1>(colliding)<< "," << std::get<2>(colliding) << "),";
         edges++;
     }
     cout << endl <<  "|V|=" << total_colliding_pairs.size() << ", |E|=" << edges << endl;
@@ -1348,6 +1513,7 @@ void InitLNS::printResult()
     {
         cout<<iter.sum_of_costs<<",";
     } 
+    cout<<endl;
 }
 
 void InitLNS::clear()

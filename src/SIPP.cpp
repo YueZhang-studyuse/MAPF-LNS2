@@ -131,8 +131,6 @@ Path SIPP::findPath(const ConstraintTable& constraint_table)
                 delete next;
         }
     }  // end while loop
-    if (focal_list.empty())
-        std::cout<<"failed"<<std::endl;
 
     releaseNodes();
     return path;
