@@ -142,6 +142,8 @@ public:
 	// int getStartLocation() const {return instance.start_locations[agent]; }
 	// int getGoalLocation() const {return instance.goal_locations[agent]; }
 
+	bool debugmode = false;
+
 	SingleAgentSolver(const Instance& instance, int agent) :
 		instance(instance), //agent(agent), 
 		start_location(instance.start_locations[agent]),

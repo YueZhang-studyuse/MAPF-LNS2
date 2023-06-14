@@ -15,7 +15,7 @@ public:
     InitLNS(const Instance& instance, vector<Agent>& agents, double time_limit,
             const string & replan_algo_name, const string & init_destory_name, int neighbor_size, int screen);
 
-    bool getInitialSolutionBySPC();
+    //bool getInitialSolutionBySPC();
     bool run();
     void writeIterStatsToFile(const string & file_name) const;
     void writeResultToFile(const string & file_name, int sum_of_distances, double preprocessing_time) const;
@@ -41,13 +41,13 @@ private:
     // 2. avoid making copies of this variable as much as possible.
 
     // vector<set<int>> collision_graph; //the old collision graph, witch we do not save conflict time
-    // //maybe we also need to know the conflict time?
-    // vector<set<int>> collision_graph_windowed;
-    //collision graph with time, <agent1,agent2,time>
-    //typedef unorderedset<tuple<int,int,int>,CollisionGraphHash,CollisionGraphEqual> collidingSet;
-    //typedef unordered_set<tuple<int,int,int>,CollisionGraphHash,CollisionGraphEqual> collidingSet;
-    collidingSet total_colliding_pairs;
-    //std::priority_queue<tuple<int,int,int>, vector<tuple<int,int,int>>, CollisionQueueCmp> colliding_pq; //we need to store also by ordered by time, in order to solve as early as possible
+    
+    //collidingSet total_colliding_pairs;
+
+    vector<unordered_map<int,int>> time_collision_graph;
+    tuple<int,int,int> earlies_colliding_pairs = make_tuple(INT_MAX,-1,-1); //timestep,a1,a2
+
+    
     vector<int> goal_table;
 
 
@@ -57,23 +57,25 @@ private:
     bool runTimePP();
     bool updateCollidingPairs(set<pair<int, int>>& colliding_pairs, int agent_id, const Path& path) const;
     //bool updateCollidingPairsInWindow(set<pair<int, int>>& colliding_pairs, set<pair<int, int>>& windowed_colliding_pairs, int agent_id, const Path& path) const;
-    bool updateCollidingPairsByTime(collidingSet& colliding_pairs, collidingSet& windowed_colliding_pairs, int agent_id, const Path& path) const;
+    bool updateCollidingPairsByTime(unordered_map<pair<int,int>,int> & colliding_pairs, unordered_map<pair<int,int>,int> & windowed_colliding_pairs, int agent_id, const Path& path) const;
 
     // void chooseDestroyHeuristicbyALNS();
 
-    // bool generateNeighborByCollisionGraph();
+    bool generateNeighborByCollisionGraph();
     // bool generateNeighborByTarget();
     // bool generateNeighborRandomly();
 
-    bool generateNeighborByEarlyConflict();
+    //bool generateNeighborByEarlyConflict();
 
     // int findRandomAgent() const;
     int randomWalk(int agent_id);
 
     void printCollisionGraph() const;
 
-    static unordered_map<int, set<int>>& findConnectedComponent(const vector<set<int>>& graph, int vertex,
-            unordered_map<int, set<int>>& sub_graph);
+    // static unordered_map<int, set<int>>& findConnectedComponent(const vector<set<int>>& graph, int vertex,
+    //         unordered_map<int, set<int>>& sub_graph);
+    static unordered_set<int>& findConnectedComponent(const vector<unordered_map<int,int>>& graph, int vertex,
+              unordered_set<int>& sub_graph);
 
     bool validatePathTable() const;
 };

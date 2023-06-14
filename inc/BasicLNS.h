@@ -25,37 +25,54 @@ struct Agent
     }
 };
 
-struct CollisionGraphHash
-{
-    size_t operator()(const tuple<int,int,int>& collding) const
-    {
-        size_t a1_hash = std::hash<int>()(std::get<0>(collding));
-        size_t a2_hash = std::hash<int>()(std::get<1>(collding));
-        return a1_hash ^ a2_hash;
-    }
-};
+// struct CollisionSetHash
+// {
+//     size_t operator()(const tuple<int,int,int>& collding) const
+//     {
+//         size_t a1_hash = std::hash<int>()(std::get<0>(collding));
+//         size_t a2_hash = std::hash<int>()(std::get<1>(collding));
+//         return a1_hash ^ a2_hash;
+//     }
+// };
 
-struct CollisionGraphEqual
-{
-    bool operator()(const tuple<int,int,int>& collding1, const tuple<int,int,int>& collding2) const
-    {
-        return std::get<0>(collding1) == std::get<0>(collding2) && std::get<1>(collding1) == std::get<1>(collding2);
-    }
-};
+// struct CollisionSetEqual
+// {
+//     bool operator()(const tuple<int,int,int>& collding1, const tuple<int,int,int>& collding2) const
+//     {
+//         return std::get<0>(collding1) == std::get<0>(collding2) && std::get<1>(collding1) == std::get<1>(collding2);
+//     }
+// };
 
-struct CollisionQueueCmp
-{
-    size_t operator()(const tuple<int,int,int>& collding1, const tuple<int,int,int>& collding2) const
-    {
-        if (std::get<2>(collding1) == std::get<2>(collding2))
-        {
-            return rand() > 0.5; //we give some randanness for conflicts with the same timestep
-        }
-        return std::get<2>(collding1) > std::get<2>(collding2);
-    }
-};
+// struct CollisionGraphHash
+// {
+//     size_t operator()(const pair<int,int>& collding) const
+//     {
+//         return std::hash<int>(collding.first);
+//     }
+// };
 
-typedef unordered_set<tuple<int,int,int>,CollisionGraphHash,CollisionGraphEqual> collidingSet;
+// struct CollisionGraphEqual
+// {
+//     bool operator()(const pair<int,int>>& collding1, const pair<int,int>& collding2) const
+//     {
+//         return colliding1.first == colliding2.first;
+//     }
+// };
+
+// struct CollisionQueueCmp
+// {
+//     size_t operator()(const tuple<int,int,int>& collding1, const tuple<int,int,int>& collding2) const
+//     {
+//         if (std::get<2>(collding1) == std::get<2>(collding2))
+//         {
+//             return rand() > 0.5; //we give some randanness for conflicts with the same timestep
+//         }
+//         return std::get<2>(collding1) > std::get<2>(collding2);
+//     }
+// };
+
+// typedef unordered_set<tuple<int,int,int>,CollisionSetHash,CollisionSetEqual> collidingSet;
+// typedef unordered_set<pair<int,int>,CollisionGraphHash,CollisionGraphEqual> collidingInGraph;
 
 
 struct Neighbor
@@ -76,12 +93,19 @@ struct Neighbor
     // set<pair<int, int>> old_colliding_pairs_windowed;
 
     //maybe it is easier we change it to a map?
-    // typedef unordered_set<tuple<int,int,int>,CollisionGraphHash,CollisionGraphEqual> collidingSet;
-    collidingSet colliding_pairs;
-    collidingSet old_colliding_pairs;
-    //we still need windowed because we want to compare 
-    collidingSet colliding_pairs_windowed;
-    collidingSet old_colliding_pairs_windowed;
+    // colliding_pairs: all the collidings
+    // windowed: colliding within the window
+    // collidingSet colliding_pairs;
+    // collidingSet old_colliding_pairs;
+    // //we still need windowed because we want to compare 
+    // collidingSet colliding_pairs_windowed;
+    // collidingSet old_colliding_pairs_windowed;
+
+    //to retrive collidings with time, we use map, key is the colliding pair, value is the time
+    unordered_map<pair<int,int>,int> colliding_pairs;
+    unordered_map<pair<int,int>,int> colliding_pairs_windowed;
+    unordered_map<pair<int,int>,int> old_colliding_pairs;
+    unordered_map<pair<int,int>,int> old_colliding_pairs_windowed;
 };
 
 

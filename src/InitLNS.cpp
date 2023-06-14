@@ -7,7 +7,7 @@
 InitLNS::InitLNS(const Instance& instance, vector<Agent>& agents, double time_limit,
          const string & replan_algo_name, const string & init_destory_name, int neighbor_size, int screen) :
          BasicLNS(instance, time_limit, neighbor_size, screen), agents(agents), replan_algo_name(replan_algo_name),
-         path_table(instance.map_size, agents.size()), goal_table(instance.map_size, -1)
+         path_table(instance.map_size, agents.size()), time_collision_graph(agents.size()), goal_table(instance.map_size, -1)
  {
      replan_time_limit = time_limit;
      if (init_destory_name == "Adaptive")
@@ -83,17 +83,12 @@ bool InitLNS::run()
         //         cerr << "Wrong neighbor generation strategy" << endl;
         //         exit(-1);
         // }
-        //std::cout<<"size "<<colliding_pq.size()<<std::endl;
-        succ = generateNeighborByEarlyConflict(); //my strategy, generate neighbor by earlier conflict first
-        // if (neighbor.agents.empty())
-        // {
-        //     std::cout<<total_colliding_pairs.size()<<std::endl;
-        //     std::cout<<colliding_pq.size()<<std::endl;
-        //     break;
-        // }
+        //succ = generateNeighborByEarlyConflict(); //my strategy, generate neighbor by earlier conflict first
+        succ = generateNeighborByCollisionGraph();
         
         if(!succ || neighbor.agents.empty())
         {
+            runtime = ((fsec)(Time::now() - start_time)).count();
             continue;
         }
 
@@ -101,25 +96,14 @@ bool InitLNS::run()
         neighbor.old_colliding_pairs.clear();
         neighbor.old_colliding_pairs_windowed.clear(); //windowed
 
-        unordered_set<int> neighbor_agents;
         for (int a: neighbor.agents)
         {
-            neighbor_agents.emplace(a);
-        }
-        for (auto conflict: total_colliding_pairs)
-        {
-            int a1,a2,t;
-            tie(a1,a2,t) = conflict;
-            if (neighbor_agents.find(a1) != neighbor_agents.end() || neighbor_agents.find(a2) != neighbor_agents.end())
+            for (auto j: time_collision_graph[a]) //since collision graph is already make sure everything is unique (if two pairs seems, then the time is the same)
             {
-                if (t <= commit_window)
-                {
-                    neighbor.old_colliding_pairs_windowed.emplace(make_tuple(a1,a2,t));
-                }
-                else
-                {
-                    neighbor.old_colliding_pairs.emplace(make_tuple(a1,a2,t));
-                }
+                //j is key-value pair, while key is the agent, value is the time
+                neighbor.old_colliding_pairs[make_pair(min(a, j.first), max(a, j.first))] = j.second;
+                if (j.second <= commit_window)
+                    neighbor.old_colliding_pairs_windowed[make_pair(min(a, j.first), max(a, j.first))] = j.second;
             }
         }
         if (neighbor.old_colliding_pairs.empty() && neighbor.old_colliding_pairs_windowed.empty()) //no need to replan
@@ -129,6 +113,7 @@ bool InitLNS::run()
             // {
             //     destroy_weights[selected_neighbor] = (1 - decay_factor) * destroy_weights[selected_neighbor];
             // }
+            runtime = ((fsec)(Time::now() - start_time)).count();
             continue;
         }
         // store the neighbor information
@@ -149,20 +134,16 @@ bool InitLNS::run()
             for (auto a : neighbor.agents)
                 cout << a << ", ";
             cout << endl;
-            cout << "Old colliding pairs (" << neighbor.old_colliding_pairs.size() +  neighbor.old_colliding_pairs_windowed.size() << "): ";
-            for (const auto & p : neighbor.old_colliding_pairs_windowed)
-            {
-                cout << "(" << std::get<0>(p) << "," << std::get<1>(p) << "," << std::get<2>(p) << "), ";
-            }
+            cout << "Old colliding pairs (" << neighbor.old_colliding_pairs.size() << "): ";
             for (const auto & p : neighbor.old_colliding_pairs)
             {
-                cout << "(" << std::get<0>(p) << "," << std::get<1>(p) << "," << std::get<2>(p) << "), ";
+                cout << "(" << p.first.first << "," << p.first.second << ",:" << p.second << "), ";
             }
             cout << endl;
             cout << "Old colliding pairs winodowed: "<<neighbor.old_colliding_pairs_windowed.size() <<endl;
             for (const auto & p : neighbor.old_colliding_pairs_windowed)
             {
-                cout << "(" << std::get<0>(p) << "," << std::get<1>(p) << "," << std::get<2>(p) << "), ";
+                cout << "(" << p.first.first << "," << p.first.second << ",:" << p.second << "), ";
             }
         }
 
@@ -209,28 +190,39 @@ bool InitLNS::run()
             cout <<"New windowed colliding pairs = "<< neighbor.colliding_pairs_windowed.size() <<endl;
         if (succ) // update collision graph
         {
-            int new_windowed = (int)neighbor.colliding_pairs_windowed.size() - (int)neighbor.old_colliding_pairs_windowed.size();
-            num_of_colliding_pairs += (int)neighbor.colliding_pairs.size() - (int)neighbor.old_colliding_pairs.size() + new_windowed;
-            num_of_colliding_pairs_windowed  += new_windowed;
+            num_of_colliding_pairs += (int)neighbor.colliding_pairs.size() - (int)neighbor.old_colliding_pairs.size();
+            num_of_colliding_pairs_windowed  += (int)neighbor.colliding_pairs_windowed.size() - (int)neighbor.old_colliding_pairs_windowed.size();
 
-            for(const auto& agent_pair : neighbor.old_colliding_pairs)
-            {
-                total_colliding_pairs.erase(agent_pair);
-            }
-            for(const auto& agent_pair : neighbor.old_colliding_pairs_windowed)
-            {
-                total_colliding_pairs.erase(agent_pair);
-            }
 
-            for(const auto& agent_pair : neighbor.colliding_pairs)
+            for(const auto& collidings : neighbor.old_colliding_pairs)
             {
-                total_colliding_pairs.emplace(agent_pair);
-                //colliding_pq.push(agent_pair);
+                // time_collision_graph[collidings.first.first].erase(collidings.first.second);
+                // time_collision_graph[collidings.first.second].erase(collidings.first.first);
+                int a1 = collidings.first.first;
+                int a2 = collidings.first.second;
+                time_collision_graph[a1].erase(a2);
+                time_collision_graph[a2].erase(a1);
             }
-            for(const auto& agent_pair : neighbor.colliding_pairs_windowed)
+            for(const auto& collidings : neighbor.colliding_pairs)
             {
-                total_colliding_pairs.emplace(agent_pair);
-                //colliding_pq.push(agent_pair);
+                // time_collision_graph[collidings.first.first].emplace(collidings.first.second);
+                // time_collision_graph[collidings.first.second].emplace(collidings.first.first);
+                int a1 = collidings.first.first;
+                int a2 = collidings.first.second;
+                time_collision_graph[a1][a2]=collidings.second;
+                time_collision_graph[a2][a1]=collidings.second;
+            }
+            //update the earliest
+            earlies_colliding_pairs = make_tuple(MAX_TIMESTEP,-1,-1);
+            for (int a = 0; a < time_collision_graph.size(); a++)
+            {
+                for (auto colliding: time_collision_graph[a])
+                {
+                    if (colliding.second < std::get<0>(earlies_colliding_pairs))
+                    {
+                        earlies_colliding_pairs = make_tuple(colliding.second,min(a,colliding.first), max(colliding.first,a));
+                    }
+                }
             }
             if (screen >= 2)
                 printCollisionGraph();
@@ -533,8 +525,8 @@ bool InitLNS::runTimePP()
 
 bool InitLNS::attachInitialSolutionBySPC()
 {
-    collidingSet colliding_pairs;
-    collidingSet colliding_pairs_windowed;
+    unordered_map<pair<int,int>,int> colliding_pairs;
+    unordered_map<pair<int,int>,int> colliding_pairs_windowed;
     neighbor.agents.clear();
     neighbor.agents.reserve(agents.size());
     sum_of_costs = 0;
@@ -543,7 +535,7 @@ bool InitLNS::attachInitialSolutionBySPC()
     {
         if (agents[i].path.empty())
             neighbor.agents.push_back(i);
-        else
+        else //single agent shortest path
         {
             if (agents[i].path.back().location != goals[i])
             {
@@ -598,7 +590,7 @@ bool InitLNS::attachInitialSolutionBySPC()
         if (screen >= 3)
         {
             cout << "After agent " << id << ": Remaining agents = " << remaining_agents <<
-                 ", colliding pairs = " << colliding_pairs.size() + colliding_pairs_windowed.size() <<
+                 ", colliding pairs = " << colliding_pairs.size() <<
                  ", LL nodes = " << agents[id].path_planner->getNumExpanded() <<
                  ", remaining time = " << time_limit - runtime << " seconds. " << endl;
             cout << "windowed colliding pairs "<<colliding_pairs_windowed.size()<<endl;
@@ -608,39 +600,54 @@ bool InitLNS::attachInitialSolutionBySPC()
     }
 
     num_of_colliding_pairs_windowed = colliding_pairs_windowed.size();
-    num_of_colliding_pairs = colliding_pairs.size() + num_of_colliding_pairs_windowed;
-    for(const auto& collidings : colliding_pairs) //update what in remained into total colliding pairs
+    num_of_colliding_pairs = colliding_pairs.size();
+    for(const auto& collidings : colliding_pairs) //update what in remained into total collision graph
     {
         //we need to update by time
-        auto iter = total_colliding_pairs.find(collidings);
-        if (iter == total_colliding_pairs.end())
+        // auto iter = total_colliding_pairs.find(collidings);
+        // if (iter == total_colliding_pairs.end())
+        // {
+        //     total_colliding_pairs.emplace(collidings);
+        // }
+        // else
+        // {
+        //     if (std::get<2>(collidings) < std::get<2>(*iter))
+        //     {
+        //         total_colliding_pairs.erase(iter);
+        //         total_colliding_pairs.emplace(collidings);
+        //     }
+        // }
+        auto agent_pair = collidings.first;
+        int time = collidings.second;
+        if (time_collision_graph[agent_pair.first].find(agent_pair.second) != time_collision_graph[agent_pair.first].end())
         {
-            total_colliding_pairs.emplace(collidings);
+            int current_time = time_collision_graph[agent_pair.first][agent_pair.second];
+            if (time < current_time)
+            {
+                time_collision_graph[agent_pair.first][agent_pair.second] = time;
+            }
         }
         else
         {
-            if (std::get<2>(collidings) < std::get<2>(*iter))
-            {
-                total_colliding_pairs.erase(iter);
-                total_colliding_pairs.emplace(collidings);
-            }
+            time_collision_graph[agent_pair.first][agent_pair.second] = time;
         }
-    }
-    for(const auto& collidings : colliding_pairs_windowed) //update what in windowed into total colliding pairs
-    {
-        //we need to update by time
-        auto iter = total_colliding_pairs.find(collidings);
-        if (iter == total_colliding_pairs.end())
+
+        if (time_collision_graph[agent_pair.second].find(agent_pair.first) != time_collision_graph[agent_pair.second].end())
         {
-            total_colliding_pairs.emplace(collidings);
+            int current_time = time_collision_graph[agent_pair.second][agent_pair.first];
+            if (time < current_time)
+            {
+                time_collision_graph[agent_pair.second][agent_pair.first] = time;
+            }
         }
         else
         {
-            if (std::get<2>(collidings) < std::get<2>(*iter))
-            {
-                total_colliding_pairs.erase(iter);
-                total_colliding_pairs.emplace(collidings);
-            }
+            time_collision_graph[agent_pair.second][agent_pair.first] = time;
+        }
+
+        if (time < std::get<0>(earlies_colliding_pairs))//update the earlies record
+        {
+            earlies_colliding_pairs = make_tuple(time,agent_pair.first,agent_pair.second);
         }
     }
 
@@ -650,96 +657,96 @@ bool InitLNS::attachInitialSolutionBySPC()
     return remaining_agents == 0;
 }
 
-bool InitLNS::getInitialSolutionBySPC() //solely by individual shortest path
-{
-    neighbor.agents.clear();
-    neighbor.agents.reserve(agents.size());
-    sum_of_costs = 0;
-    for (int i = 0; i < (int)agents.size(); i++)
-    {
-        if (agents[i].path.empty())
-            neighbor.agents.push_back(i);
-        else
-        {
-            sum_of_costs += (int)agents[i].path.size() - 1;
-            path_table.insertPath(agents[i].id, agents[i].path);
-        }
-    }
-    int remaining_agents = (int)neighbor.agents.size();
-    ConstraintTable constraint_table(instance.num_of_cols, instance.map_size, nullptr); //not use any path now, because we only want single agent path
-    // set<pair<int, int>> colliding_pairs;
-    // set<pair<int, int>> colliding_pairs_windowed;
-    collidingSet colliding_pairs;
-    collidingSet colliding_pairs_windowed;
+// bool InitLNS::getInitialSolutionBySPC() //solely by individual shortest path
+// {
+//     neighbor.agents.clear();
+//     neighbor.agents.reserve(agents.size());
+//     sum_of_costs = 0;
+//     for (int i = 0; i < (int)agents.size(); i++)
+//     {
+//         if (agents[i].path.empty())
+//             neighbor.agents.push_back(i);
+//         else
+//         {
+//             sum_of_costs += (int)agents[i].path.size() - 1;
+//             path_table.insertPath(agents[i].id, agents[i].path);
+//         }
+//     }
+//     int remaining_agents = (int)neighbor.agents.size();
+//     ConstraintTable constraint_table(instance.num_of_cols, instance.map_size, nullptr); //not use any path now, because we only want single agent path
+//     // set<pair<int, int>> colliding_pairs;
+//     // set<pair<int, int>> colliding_pairs_windowed;
+//     unordered_map<pair<int,int>,int> colliding_pairs;
+//     unordered_map<pair<int,int>,int> colliding_pairs_windowed;
 
-    for (auto id : neighbor.agents)
-    {
-        agents[id].path_planner->commit_window = commit_window;
-        agents[id].path = agents[id].path_planner->findPath(constraint_table);
-        assert(!agents[id].path.empty() && agents[id].path.back().location == agents[id].path_planner->goal_location);
-        //check all because we are using single agent shorest path
-        updateCollidingPairsByTime(colliding_pairs,colliding_pairs_windowed, agents[id].id, agents[id].path); //windowed
+//     for (auto id : neighbor.agents)
+//     {
+//         agents[id].path_planner->commit_window = commit_window;
+//         agents[id].path = agents[id].path_planner->findPath(constraint_table);
+//         assert(!agents[id].path.empty() && agents[id].path.back().location == agents[id].path_planner->goal_location);
+//         //check all because we are using single agent shorest path
+//         updateCollidingPairsByTime(colliding_pairs,colliding_pairs_windowed, agents[id].id, agents[id].path); //windowed
 
-        sum_of_costs += (int)agents[id].path.size() - 1;
-        remaining_agents--;
-        path_table.insertPath(agents[id].id, agents[id].path);
-        runtime = ((fsec)(Time::now() - start_time)).count();
-        if (screen >= 3)
-        {
-            cout << "After agent " << id << ": Remaining agents = " << remaining_agents <<
-                 ", colliding pairs = " << colliding_pairs.size() + colliding_pairs_windowed.size() <<
-                 ", LL nodes = " << agents[id].path_planner->getNumExpanded() <<
-                 ", remaining time = " << time_limit - runtime << " seconds. " << endl;
-            cout << "windowed colliding pairs "<<colliding_pairs_windowed.size()<<endl;
-        }
-        if (runtime > time_limit)
-            break;
-    }
+//         sum_of_costs += (int)agents[id].path.size() - 1;
+//         remaining_agents--;
+//         path_table.insertPath(agents[id].id, agents[id].path);
+//         runtime = ((fsec)(Time::now() - start_time)).count();
+//         if (screen >= 3)
+//         {
+//             cout << "After agent " << id << ": Remaining agents = " << remaining_agents <<
+//                  ", colliding pairs = " << colliding_pairs.size() + colliding_pairs_windowed.size() <<
+//                  ", LL nodes = " << agents[id].path_planner->getNumExpanded() <<
+//                  ", remaining time = " << time_limit - runtime << " seconds. " << endl;
+//             cout << "windowed colliding pairs "<<colliding_pairs_windowed.size()<<endl;
+//         }
+//         if (runtime > time_limit)
+//             break;
+//     }
 
-    num_of_colliding_pairs_windowed = colliding_pairs_windowed.size();
-    num_of_colliding_pairs = colliding_pairs.size() + num_of_colliding_pairs_windowed;
-    for(const auto& collidings : colliding_pairs) //update what in remained into total colliding pairs
-    {
-        //we need to update by time
-        auto iter = total_colliding_pairs.find(collidings);
-        if (iter == total_colliding_pairs.end())
-        {
-            total_colliding_pairs.emplace(collidings);
-        }
-        else
-        {
-            if (std::get<2>(collidings) < std::get<2>(*iter))
-            {
-                total_colliding_pairs.erase(iter);
-                total_colliding_pairs.emplace(collidings);
-            }
-        }
-        //also insert to pq, no need to check for update
-        //colliding_pq.push(collidings);
-    }
-    for(const auto& collidings : colliding_pairs_windowed) //update what in windowed into total colliding pairs
-    {
-        //we need to update by time
-        auto iter = total_colliding_pairs.find(collidings);
-        if (iter == total_colliding_pairs.end())
-        {
-            total_colliding_pairs.emplace(collidings);
-        }
-        else
-        {
-            if (std::get<2>(collidings) < std::get<2>(*iter))
-            {
-                total_colliding_pairs.erase(iter);
-                total_colliding_pairs.emplace(collidings);
-            }
-        }
-        //colliding_pq.push(collidings);
-    }
+//     num_of_colliding_pairs_windowed = colliding_pairs_windowed.size();
+//     num_of_colliding_pairs = colliding_pairs.size() + num_of_colliding_pairs_windowed;
+//     for(const auto& collidings : colliding_pairs) //update what in remained into total colliding pairs
+//     {
+//         //we need to update by time
+//         auto iter = total_colliding_pairs.find(collidings);
+//         if (iter == total_colliding_pairs.end())
+//         {
+//             total_colliding_pairs.emplace(collidings);
+//         }
+//         else
+//         {
+//             if (std::get<2>(collidings) < std::get<2>(*iter))
+//             {
+//                 total_colliding_pairs.erase(iter);
+//                 total_colliding_pairs.emplace(collidings);
+//             }
+//         }
+//         //also insert to pq, no need to check for update
+//         //colliding_pq.push(collidings);
+//     }
+//     for(const auto& collidings : colliding_pairs_windowed) //update what in windowed into total colliding pairs
+//     {
+//         //we need to update by time
+//         auto iter = total_colliding_pairs.find(collidings);
+//         if (iter == total_colliding_pairs.end())
+//         {
+//             total_colliding_pairs.emplace(collidings);
+//         }
+//         else
+//         {
+//             if (std::get<2>(collidings) < std::get<2>(*iter))
+//             {
+//                 total_colliding_pairs.erase(iter);
+//                 total_colliding_pairs.emplace(collidings);
+//             }
+//         }
+//         //colliding_pq.push(collidings);
+//     }
 
-    if (screen >= 2)
-        printCollisionGraph();
-    return remaining_agents == 0;
-}
+//     if (screen >= 2)
+//         printCollisionGraph();
+//     return remaining_agents == 0;
+// }
 //to keep track of conflicts and solutions in each window, we need to keep track of the time and collision pairs
 // bool InitLNS::getInitialSolution()
 // {
@@ -863,7 +870,7 @@ bool InitLNS::updateCollidingPairs(set<pair<int, int>>& colliding_pairs, int age
 }
 
 // return true if the new p[ath has collisions;
-bool InitLNS::updateCollidingPairsByTime(collidingSet& colliding_pairs, collidingSet& windowed_colliding_pairs, int agent_id, const Path& path) const
+bool InitLNS::updateCollidingPairsByTime(unordered_map<pair<int,int>,int> & colliding_pairs, unordered_map<pair<int,int>,int> & windowed_colliding_pairs, int agent_id, const Path& path) const
 {
     bool succ = false;
     if (path.size() < 2)
@@ -877,46 +884,24 @@ bool InitLNS::updateCollidingPairsByTime(collidingSet& colliding_pairs, collidin
             for (auto id : path_table.table[to][t])
             {
                 succ = true;
-                auto set_key = make_tuple(min(agent_id, id), max(agent_id, id),t);
-                if (windowed_colliding_pairs.find(set_key) == windowed_colliding_pairs.end() && colliding_pairs.find(set_key) == colliding_pairs.end()) //a new colliding pair
+                auto map_key = make_pair(min(agent_id, id), max(agent_id, id));
+                if (colliding_pairs.find(map_key) == colliding_pairs.end()) //new collidings
                 {
+                    colliding_pairs[map_key] = t;
                     if (t <= commit_window) //add to windowed
                     {
-                        //windowed_colliding_pairs[set_key] = t;
-                        windowed_colliding_pairs.emplace(set_key);
-                    }
-                    else
-                    {
-                        colliding_pairs.emplace(set_key);
+                        windowed_colliding_pairs[map_key] = t;
                     }
                 }
-                else if (t <= commit_window)
+                else //update
                 {
-                    auto iter = windowed_colliding_pairs.find(set_key);
-                    if (iter != windowed_colliding_pairs.end())
+                    int current_time = colliding_pairs[map_key];
+                    if(t < current_time) //smaller time, we update
                     {
-                        if(t < std::get<2>(*iter)) //we update
+                        colliding_pairs[map_key] = t;
+                        if (t <= commit_window)
                         {
-                            windowed_colliding_pairs.erase(iter);
-                            windowed_colliding_pairs.emplace(set_key);
-                        }
-                    }
-                    else //we update from remaining to windowed
-                    {
-                        colliding_pairs.erase(set_key);
-                        windowed_colliding_pairs.emplace(set_key);
-                    }
-                }
-                else 
-                {
-                    //check if the t has be ealier to change to a windowed
-                    auto iter = colliding_pairs.find(set_key);
-                    if (iter != colliding_pairs.end())
-                    {
-                        if(t < std::get<2>(*iter)) //we update
-                        {
-                            colliding_pairs.erase(iter);
-                            colliding_pairs.emplace(set_key);
+                            windowed_colliding_pairs[map_key] = t;
                         }
                     }
                 }
@@ -931,45 +916,24 @@ bool InitLNS::updateCollidingPairsByTime(collidingSet& colliding_pairs, collidin
                     if (a1 == a2)
                     {
                         succ = true;
-                        auto set_key = make_tuple(min(agent_id, a1), max(agent_id, a1),t);
-                        if (windowed_colliding_pairs.find(set_key) == windowed_colliding_pairs.end() && colliding_pairs.find(set_key) == colliding_pairs.end()) //a new colliding pair
+                        auto map_key = make_pair(min(agent_id, a1), max(agent_id, a1));
+                        if (colliding_pairs.find(map_key) == colliding_pairs.end()) //new collidings
                         {
+                            colliding_pairs[map_key] = t;
                             if (t <= commit_window) //add to windowed
                             {
-                                windowed_colliding_pairs.emplace(set_key);
-                            }
-                            else
-                            {
-                                colliding_pairs.emplace(set_key);
+                                windowed_colliding_pairs[map_key] = t;
                             }
                         }
-                        else if (t <= commit_window)
+                        else //update
                         {
-                            auto iter = windowed_colliding_pairs.find(set_key);
-                            if (iter != windowed_colliding_pairs.end())
+                            int current_time = colliding_pairs[map_key];
+                            if(t < current_time) //smaller time, we update
                             {
-                                if(t < std::get<2>(*iter)) //we update
+                                colliding_pairs[map_key] = t;
+                                if (t <= commit_window)
                                 {
-                                    windowed_colliding_pairs.erase(iter);
-                                    windowed_colliding_pairs.emplace(set_key);
-                                }
-                            }
-                            else //we update from remaining to windowed
-                            {
-                                colliding_pairs.erase(set_key);
-                                windowed_colliding_pairs.emplace(set_key);
-                            }
-                        }
-                        else 
-                        {
-                            //check if the t has be ealier to change to a windowed
-                            auto iter = colliding_pairs.find(set_key);
-                            if (iter != colliding_pairs.end())
-                            {
-                                if(t < std::get<2>(*iter)) //we update
-                                {
-                                    colliding_pairs.erase(iter);
-                                    colliding_pairs.emplace(set_key);
+                                    windowed_colliding_pairs[map_key] = t;
                                 }
                             }
                         }
@@ -988,45 +952,24 @@ bool InitLNS::updateCollidingPairsByTime(collidingSet& colliding_pairs, collidin
                 if (agents[id].path.back().location == to) // if agent id's goal is to, then this is the agent we want
                 {
                     succ = true;
-                    auto set_key = make_tuple(min(agent_id, id), max(agent_id, id),t);
-                    if (windowed_colliding_pairs.find(set_key) == windowed_colliding_pairs.end() && colliding_pairs.find(set_key) == colliding_pairs.end()) //a new colliding pair
+                    auto map_key = make_pair(min(agent_id, id), max(agent_id, id));
+                    if (colliding_pairs.find(map_key) == colliding_pairs.end()) //new collidings
                     {
+                        colliding_pairs[map_key] = t;
                         if (t <= commit_window) //add to windowed
                         {
-                            windowed_colliding_pairs.emplace(set_key);
-                        }
-                        else
-                        {
-                            colliding_pairs.emplace(set_key);
+                            windowed_colliding_pairs[map_key] = t;
                         }
                     }
-                    else if (t <= commit_window)
+                    else //update
                     {
-                        auto iter = windowed_colliding_pairs.find(set_key);
-                        if (iter != windowed_colliding_pairs.end())
+                        int current_time = colliding_pairs[map_key];
+                        if(t < current_time) //smaller time, we update
                         {
-                            if(t < std::get<2>(*iter)) //we update
+                            colliding_pairs[map_key] = t;
+                            if (t <= commit_window)
                             {
-                                windowed_colliding_pairs.erase(iter);
-                                windowed_colliding_pairs.emplace(set_key);
-                            }
-                        }
-                        else //we update from remaining to windowed
-                        {
-                            colliding_pairs.erase(set_key);
-                            windowed_colliding_pairs.emplace(set_key);
-                        }
-                    }
-                    else 
-                    {
-                        //check if the t has be ealier to change to a windowed
-                        auto iter = colliding_pairs.find(set_key);
-                        if (iter != colliding_pairs.end())
-                        {
-                            if(t < std::get<2>(*iter)) //we update
-                            {
-                                colliding_pairs.erase(iter);
-                                colliding_pairs.emplace(set_key);
+                                windowed_colliding_pairs[map_key] = t;
                             }
                         }
                     }
@@ -1041,45 +984,24 @@ bool InitLNS::updateCollidingPairsByTime(collidingSet& colliding_pairs, collidin
         for (auto id : path_table.table[goal][t])
         {
             succ = true;
-            auto set_key = make_tuple(min(agent_id, id), max(agent_id, id),t);
-            if (windowed_colliding_pairs.find(set_key) == windowed_colliding_pairs.end() && colliding_pairs.find(set_key) == colliding_pairs.end()) //a new colliding pair
+            auto map_key = make_pair(min(agent_id, id), max(agent_id, id));
+            if (colliding_pairs.find(map_key) == colliding_pairs.end()) //new collidings
             {
+                colliding_pairs[map_key] = t;
                 if (t <= commit_window) //add to windowed
                 {
-                    windowed_colliding_pairs.emplace(set_key);
-                }
-                else
-                {
-                    colliding_pairs.emplace(set_key);
+                    windowed_colliding_pairs[map_key] = t;
                 }
             }
-            else if (t <= commit_window)
+            else //update
             {
-                auto iter = windowed_colliding_pairs.find(set_key);
-                if (iter != windowed_colliding_pairs.end())
+                int current_time = colliding_pairs[map_key];
+                if(t < current_time) //smaller time, we update
                 {
-                    if(t < std::get<2>(*iter)) //we update
+                    colliding_pairs[map_key] = t;
+                    if (t <= commit_window)
                     {
-                        windowed_colliding_pairs.erase(iter);
-                        windowed_colliding_pairs.emplace(set_key);
-                    }
-                }
-                else //we update from remaining to windowed
-                {
-                    colliding_pairs.erase(set_key);
-                    windowed_colliding_pairs.emplace(set_key);
-                }
-            }
-            else 
-            {
-                //check if the t has be ealier to change to a windowed
-                auto iter = colliding_pairs.find(set_key);
-                if (iter != colliding_pairs.end())
-                {
-                    if(t < std::get<2>(*iter)) //we update
-                    {
-                        colliding_pairs.erase(iter);
-                        colliding_pairs.emplace(set_key);
+                        windowed_colliding_pairs[map_key] = t;
                     }
                 }
             }
@@ -1100,100 +1022,105 @@ bool InitLNS::updateCollidingPairsByTime(collidingSet& colliding_pairs, collidin
 //     }
 // }
 
-bool InitLNS::generateNeighborByEarlyConflict()
-{
-    if (neighbor_size >= agents.size())
-    {
-        neighbor.agents.resize(agents.size());
-        for (int i = 0; i < (int)agents.size(); i++)
-            neighbor.agents[i] = i;
-        return true;
-    }
+// bool InitLNS::generateNeighborByEarlyConflict()
+// {
+//     if (neighbor_size >= agents.size())
+//     {
+//         neighbor.agents.resize(agents.size());
+//         for (int i = 0; i < (int)agents.size(); i++)
+//             neighbor.agents[i] = i;
+//         return true;
+//     }
 
-    unordered_set<int> neighbors_set;
-    std::priority_queue<tuple<int,int,int>, vector<tuple<int,int,int>>, CollisionQueueCmp> colliding_pq;
-    //we first need to select top n based on time, so use a pqueue to sort, and track the current largest to filter no need item
-    int max_curr_time = -1;
-    for (auto colliding: total_colliding_pairs)
+//     unordered_set<int> neighbors_set;
+
+    //instead of picking a random agent to start with, we have starting point: earliest colliding pairs
+    // std::priority_queue<tuple<int,int,int>, vector<tuple<int,int,int>>, CollisionQueueCmp> colliding_pq;
+    // //we first need to select top n based on time, so use a pqueue to sort, and track the current largest to filter no need item
+    // int max_curr_time = -1;
+    // for (auto colliding: total_colliding_pairs)
+    // {
+    //     //we continue because current time > the existing max time and neighbor size already enough
+    //     if (std::get<2>(colliding) > max_curr_time && neighbors_set.size() >= neighbor_size) 
+    //         continue;
+    //     colliding_pq.push(colliding);
+    //     if (std::get<2>(colliding) > max_curr_time)
+    //         max_curr_time = std::get<2>(colliding);
+    // }
+    // while (neighbors_set.size() < neighbor_size && !colliding_pq.empty())
+    // {
+    //     auto curr = colliding_pq.top();
+    //     if(neighbors_set.size() == neighbor_size - 1)
+    //     {
+    //         if (rand() > 0.5)
+    //             neighbors_set.emplace(std::get<1>(curr));
+    //         else
+    //             neighbors_set.emplace(std::get<0>(curr));
+    //     }
+    //     else
+    //     {
+    //         neighbors_set.emplace(std::get<0>(curr));
+    //         neighbors_set.emplace(std::get<1>(curr));
+    //     }
+    //     colliding_pq.pop();
+    // }
+    // neighbor.agents.assign(neighbors_set.begin(), neighbors_set.end());
+//     if (screen >= 2)
+//         cout << "Generate " << neighbor.agents.size() << " neighbors by early conflict" << endl;
+//     return true;
+// }
+
+bool InitLNS::generateNeighborByCollisionGraph() //update by chossing the earliest
+{
+    //unordered_map<int, set<int>> G;
+    unordered_set<int> G;
+    auto v = rand()%2 < 1 ? std::get<1>(earlies_colliding_pairs) : std::get<2>(earlies_colliding_pairs);
+    findConnectedComponent(time_collision_graph, v, G);
+    assert(G.size() > 1);
+
+    assert(neighbor_size <= (int)agents.size());
+    set<int> neighbors_set;
+    if ((int)G.size() <= neighbor_size)
     {
-        //we continue because current time > the existing max time and neighbor size already enough
-        if (std::get<2>(colliding) > max_curr_time && neighbors_set.size() >= neighbor_size) 
-            continue;
-        colliding_pq.push(colliding);
-        if (std::get<2>(colliding) > max_curr_time)
-            max_curr_time = std::get<2>(colliding);
-    }
-    while (neighbors_set.size() < neighbor_size && !colliding_pq.empty())
-    {
-        auto curr = colliding_pq.top();
-        if(neighbors_set.size() == neighbor_size - 1)
+        for (const auto& node : G)
+            neighbors_set.insert(node);
+        int count = 0;
+        bool first = true;
+        while ((int)neighbors_set.size() < neighbor_size && count < 10)
         {
-            if (rand() > 0.5)
-                neighbors_set.emplace(std::get<1>(curr));
+            int a1;
+            if (first)
+            {
+                a1 = v; //we bias more by chosing the earliest colliding agent
+                first = false;
+            }
             else
-                neighbors_set.emplace(std::get<0>(curr));
+            {
+                a1 = *std::next(neighbors_set.begin(), rand() % neighbors_set.size());
+            }
+            int a2 = randomWalk(a1);
+            if (a2 != NO_AGENT)
+                neighbors_set.insert(a2);
+            else
+                count++;
         }
-        else
+    }
+    else
+    {
+        neighbors_set.insert(v);
+        G.erase(v);
+        while ((int)neighbors_set.size() < neighbor_size)
         {
-            neighbors_set.emplace(std::get<0>(curr));
-            neighbors_set.emplace(std::get<1>(curr));
+            int a = *std::next(G.begin(), rand() % G.size());
+            neighbors_set.insert(a);
         }
-        colliding_pq.pop();
     }
     neighbor.agents.assign(neighbors_set.begin(), neighbors_set.end());
     if (screen >= 2)
-        cout << "Generate " << neighbor.agents.size() << " neighbors by early conflict" << endl;
+        cout << "Generate " << neighbor.agents.size() << " neighbors by collision graph" << endl;
     return true;
 }
 
-// bool InitLNS::generateNeighborByCollisionGraph()
-// {
-
-//     vector<int> all_vertices;
-//     all_vertices.reserve(collision_graph.size());
-//     for (int i = 0; i < (int)collision_graph.size(); i++)
-//     {
-//         if (!collision_graph[i].empty())
-//             all_vertices.push_back(i);
-//     }
-//     unordered_map<int, set<int>> G;
-//     auto v = all_vertices[rand() % all_vertices.size()]; // pick a random vertex
-//     findConnectedComponent(collision_graph, v, G);
-//     assert(G.size() > 1);
-
-//     assert(neighbor_size <= (int)agents.size());
-//     set<int> neighbors_set;
-//     if ((int)G.size() <= neighbor_size)
-//     {
-//         for (const auto& node : G)
-//             neighbors_set.insert(node.first);
-//         int count = 0;
-//         while ((int)neighbors_set.size() < neighbor_size && count < 10)
-//         {
-//             int a1 = *std::next(neighbors_set.begin(), rand() % neighbors_set.size());
-//             int a2 = randomWalk(a1);
-//             if (a2 != NO_AGENT)
-//                 neighbors_set.insert(a2);
-//             else
-//                 count++;
-//         }
-//     }
-//     else
-//     {
-//         int a = std::next(G.begin(), rand() % G.size())->first;
-//         neighbors_set.insert(a);
-//         while ((int)neighbors_set.size() < neighbor_size)
-//         {
-//             a = *std::next(G[a].begin(), rand() % G[a].size());
-//             neighbors_set.insert(a);
-//         }
-//     }
-//     neighbor.agents.assign(neighbors_set.begin(), neighbors_set.end());
-//     if (screen >= 2)
-//         cout << "Generate " << neighbor.agents.size() << " neighbors by collision graph" << endl;
-//     return true;
-
-// }
 // bool InitLNS::generateNeighborByTarget()
 // {
 //     int a = -1;
@@ -1340,28 +1267,28 @@ bool InitLNS::generateNeighborByEarlyConflict()
 //     return true;
 // }
 
-// // Random walk; return the first agent that the agent collides with
-// int InitLNS::randomWalk(int agent_id)
-// {
-//     int t = rand() % agents[agent_id].path.size();
-//     int loc = agents[agent_id].path[t].location;
-//     while (t <= path_table.makespan and
-//            (path_table.table[loc].size() <= t or
-//            path_table.table[loc][t].empty() or
-//            (path_table.table[loc][t].size() == 1 and path_table.table[loc][t].front() == agent_id)))
-//     {
-//         auto next_locs = instance.getNeighbors(loc);
-//         next_locs.push_back(loc);
-//         int step = rand() % next_locs.size();
-//         auto it = next_locs.begin();
-//         loc = *std::next(next_locs.begin(), rand() % next_locs.size());
-//         t = t + 1;
-//     }
-//     if (t > path_table.makespan)
-//         return NO_AGENT;
-//     else
-//         return *std::next(path_table.table[loc][t].begin(), rand() % path_table.table[loc][t].size());
-// }
+// Random walk; return the first agent that the agent collides with
+int InitLNS::randomWalk(int agent_id)
+{
+    int t = rand() % agents[agent_id].path.size();
+    int loc = agents[agent_id].path[t].location;
+    while (t <= path_table.makespan and
+           (path_table.table[loc].size() <= t or
+           path_table.table[loc][t].empty() or
+           (path_table.table[loc][t].size() == 1 and path_table.table[loc][t].front() == agent_id)))
+    {
+        auto next_locs = instance.getNeighbors(loc);
+        next_locs.push_back(loc);
+        int step = rand() % next_locs.size();
+        auto it = next_locs.begin();
+        loc = *std::next(next_locs.begin(), rand() % next_locs.size());
+        t = t + 1;
+    }
+    if (t > path_table.makespan)
+        return NO_AGENT;
+    else
+        return *std::next(path_table.table[loc][t].begin(), rand() % path_table.table[loc][t].size());
+}
 
 void InitLNS::writeIterStatsToFile(const string & file_name) const
 {
@@ -1441,33 +1368,59 @@ void InitLNS::printCollisionGraph() const
 {
     cout << "Collision graph: ";
     int edges = 0;
-    for (auto colliding: total_colliding_pairs)
+    for (size_t i = 0; i < time_collision_graph.size(); i++)
     {
-        //if (std::get<2>(colliding) <= commit_window)
-            cout<< "(" << std::get<0>(colliding) << "," << std::get<1>(colliding)<< "," << std::get<2>(colliding) << "),";
-        edges++;
+        for (auto collision : time_collision_graph[i])
+        {
+            int j = collision.first;
+            int t = collision.second;
+            if (i < j)
+            {
+                cout << "(" << i << "," << j <<",t:"<< t << "),";
+                edges++;
+            }
+        }
     }
-    cout << endl <<  "|V|=" << total_colliding_pairs.size() << ", |E|=" << edges << endl;
+    cout << endl <<  "|V|=" << time_collision_graph.size() << ", |E|=" << edges << endl;
 }
 
 
-unordered_map<int, set<int>>& InitLNS::findConnectedComponent(const vector<set<int>>& graph, int vertex,
-                                                               unordered_map<int, set<int>>& sub_graph)
+// unordered_map<int, set<int>>& InitLNS::findConnectedComponent(const vector<set<int>>& graph, int vertex,
+//                                                                unordered_map<int, set<int>>& sub_graph) //modified due to time collision graph
+// {
+//     std::queue<int> Q;
+//     Q.push(vertex);
+//     sub_graph.emplace(vertex, graph[vertex]);
+//     while (!Q.empty())
+//     {
+//         auto v = Q.front(); Q.pop();
+//         for (const auto & u : graph[v])
+//         {
+//             auto ret = sub_graph.emplace(u, graph[u]);
+//             if (ret.second) // insert successfully
+//                 Q.push(u);
+//         }
+//     }
+//     return sub_graph;
+// }
+
+unordered_set<int>& InitLNS::findConnectedComponent(const vector<unordered_map<int,int>>& graph, int vertex,
+                                                               unordered_set<int>& candidates) //modified due to time collision graph
 {
     std::queue<int> Q;
     Q.push(vertex);
-    sub_graph.emplace(vertex, graph[vertex]);
+    candidates.emplace(vertex);
     while (!Q.empty())
     {
         auto v = Q.front(); Q.pop();
         for (const auto & u : graph[v])
         {
-            auto ret = sub_graph.emplace(u, graph[u]);
+            auto ret = candidates.emplace(u.first);
             if (ret.second) // insert successfully
-                Q.push(u);
+                Q.push(u.first);
         }
     }
-    return sub_graph;
+    return candidates;
 }
 
 void InitLNS::printPath() const
@@ -1522,7 +1475,8 @@ void InitLNS::clear()
     path_table.clear();
     //collision_graph.clear();
     //collision_graph_windowed.clear();
-    total_colliding_pairs.clear();
+    //total_colliding_pairs.clear();
+    time_collision_graph.clear();
     goal_table.clear();
 }
 
