@@ -78,7 +78,8 @@ void PathTable::getConflictingAgentswithStayTarget(int agent_id, set<int>& confl
         bool insert_to_set = true;
         if (stay_target[agent] != 0)
         {
-            insert_to_set = (rand()*(stay_target[agent] + 1) < 1);
+            insert_to_set = (rand()%(stay_target[agent] + 1) < 1);
+
         }
         if (insert_to_set)
             conflicting_agents.insert(agent); // vertex conflict
@@ -91,7 +92,7 @@ void PathTable::getConflictingAgentswithStayTarget(int agent_id, set<int>& confl
         bool insert_to_set = true;
         if (stay_target[agent] != 0)
         {
-            insert_to_set = (rand()*(stay_target[agent] + 1) < 1);
+            insert_to_set = (rand()%(stay_target[agent] + 1) < 1);
         }
         if (insert_to_set)
             conflicting_agents.insert(agent); // vertex conflict
@@ -178,7 +179,7 @@ void PathTable::insert_with_target_stay(set<int>& conflicting_agents, vector<int
     bool insert_to_set = true;
     if (stay_target[agent] != 0)
     {
-        insert_to_set = (rand()*(stay_target[agent] + 1) < 1);
+        insert_to_set = (rand()%(stay_target[agent] + 1) < 1);
     }
     if (insert_to_set)
         conflicting_agents.insert(agent); // vertex conflict
