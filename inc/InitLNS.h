@@ -75,7 +75,7 @@ private:
     // static unordered_map<int, set<int>>& findConnectedComponent(const vector<set<int>>& graph, int vertex,
     //         unordered_map<int, set<int>>& sub_graph);
     static unordered_set<int>& findConnectedComponent(const vector<unordered_map<int,int>>& graph, int vertex,
-              unordered_set<int>& sub_graph);
+              unordered_set<int>& sub_graph, int max_size);
 
     bool validatePathTable() const;
 };

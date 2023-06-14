@@ -356,15 +356,14 @@ int main(int argc, char** argv)
                     }
                 }
                 //run lns to get next commit
+                lns.setRuntimeLimit(60);
                 succ = lns.runLns2(!initial_run,false); 
+                lns.validateSolution();
+                return 0;
                 if (succ)
                 {
-                    std::cout<<"test 1"<<endl;
                     //lns.validateSolutionByWindow(commit_step);
-                    std::cout<<"test 2"<<endl;
-                    std::cout<<"colliding pairs: "<<lns.lns2_solutin_conflicts<<std::endl;
                     lns.validateSolutionDebugMode();
-                    std::cout<<"test 3"<<endl;
                     future_paths.clear();
                     future_paths.resize(instance.getDefaultNumberOfAgents());
                     if (initial_run)
@@ -407,6 +406,7 @@ int main(int argc, char** argv)
                     cerr << "Initialise LNS2 failed" << endl;
                     exit(-1);
                 }
+
                 lns.writePathsToFile("InitialPath.txt");
                 initial_run = false;
             }
