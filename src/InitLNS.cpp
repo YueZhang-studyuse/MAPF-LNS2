@@ -1073,9 +1073,10 @@ bool InitLNS::updateCollidingPairsByTime(unordered_map<pair<int,int>,int> & coll
 bool InitLNS::generateNeighborByCollisionGraph() //update by chossing the earliest
 {
     //unordered_map<int, set<int>> G;
+    //unordered_set<int> G;
     unordered_set<int> G;
     auto v = rand()%2 < 1 ? std::get<1>(earlies_colliding_pairs) : std::get<2>(earlies_colliding_pairs);
-    findConnectedComponent(time_collision_graph, v, G);
+    findConnectedComponent(time_collision_graph, v, G,neighbor_size);
     assert(G.size() > 1);
 
     assert(neighbor_size <= (int)agents.size());
@@ -1108,10 +1109,17 @@ bool InitLNS::generateNeighborByCollisionGraph() //update by chossing the earlie
     else
     {
         neighbors_set.insert(v);
-        G.erase(v);
+        int a = v;
+        //G.erase(v);
         while ((int)neighbors_set.size() < neighbor_size)
         {
-            int a = *std::next(G.begin(), rand() % G.size());
+            // int a = *std::next(G.begin(), rand() % G.size());
+            // neighbors_set.insert(a);
+            //int a = *std::next(time_collision_graph[a].begin(), rand() % time_collision_graph[a].size());
+            while (neighbors_set.find(a) != neighbors_set.end())
+            {
+                a = (*std::next(time_collision_graph[a].begin(), rand() % time_collision_graph[a].size())).first;
+            }
             neighbors_set.insert(a);
         }
     }
@@ -1405,7 +1413,7 @@ void InitLNS::printCollisionGraph() const
 // }
 
 unordered_set<int>& InitLNS::findConnectedComponent(const vector<unordered_map<int,int>>& graph, int vertex,
-                                                               unordered_set<int>& candidates) //modified due to time collision graph
+                                                               unordered_set<int>& candidates,int max_size) //modified due to time collision graph
 {
     std::queue<int> Q;
     Q.push(vertex);
@@ -1418,6 +1426,8 @@ unordered_set<int>& InitLNS::findConnectedComponent(const vector<unordered_map<i
             auto ret = candidates.emplace(u.first);
             if (ret.second) // insert successfully
                 Q.push(u.first);
+            if (candidates.size() > max_size)
+                return candidates;
         }
     }
     return candidates;
