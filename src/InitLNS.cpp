@@ -42,7 +42,7 @@ bool InitLNS::run()
     bool succ = attachInitialSolutionBySPC();
     runtime = ((fsec)(Time::now() - start_time)).count();
     iteration_stats.emplace_back(neighbor.agents.size(), sum_of_costs, runtime, "PP", 0, num_of_colliding_pairs,num_of_colliding_pairs_windowed);
-    if (screen >= 3)
+    if (screen >= 4)
         printPath();
     if (screen >= 1)
     {
@@ -84,7 +84,7 @@ bool InitLNS::run()
         //         exit(-1);
         // }
         //succ = generateNeighborByEarlyConflict(); //my strategy, generate neighbor by earlier conflict first
-        succ = generateNeighborByCollisionGraph();
+        succ = generateNeighborByEarlyCollisionGraph();
         
         if(!succ || neighbor.agents.empty())
         {
@@ -249,6 +249,222 @@ bool InitLNS::run()
         return (num_of_colliding_pairs == 0);
     return (num_of_colliding_pairs_windowed == 0);
 }
+
+bool InitLNS::runForCommit()
+{
+    start_time = Time::now();
+    //bool succ = getInitialSolutionBySPC();
+    bool succ = attachInitialSolutionBySPC();
+    runtime = ((fsec)(Time::now() - start_time)).count();
+    iteration_stats.emplace_back(neighbor.agents.size(), sum_of_costs, runtime, "PP", 0, num_of_colliding_pairs,num_of_colliding_pairs_windowed);
+    if (screen >= 4)
+        printPath();
+    if (screen >= 1)
+    {
+        cout << "Iteration " << iteration_stats.size() << ", "
+             << "group size = " << neighbor.agents.size() << ", "
+             << "colliding pairs = " << num_of_colliding_pairs << ", "
+             << "solution cost = " << sum_of_costs << ", "
+             << "remaining time = " << time_limit - runtime << endl;
+        cout<<"old colliding pairs windowed = "<<num_of_colliding_pairs_windowed<<endl;
+    }
+    if (runtime >= time_limit and !succ)
+    {
+        printResult();
+        return false;
+    }
+
+    vector<Path*> paths(agents.size());
+    for (auto i = 0; i < agents.size(); i++)
+        paths[i] = &agents[i].path;
+    while (runtime < time_limit and num_of_colliding_pairs > 0)
+    {
+        assert(instance.validateSolution(paths, sum_of_costs, num_of_colliding_pairs));
+        // if (ALNS)
+        //     chooseDestroyHeuristicbyALNS();
+
+        // switch (init_destroy_strategy)
+        // {
+        //     case TARGET_BASED:
+        //         succ = generateNeighborByTarget();
+        //         break;
+        //     case COLLISION_BASED:
+        //         succ = generateNeighborByCollisionGraph();
+        //         break;
+        //     case RANDOM_BASED:
+        //         succ = generateNeighborRandomly();
+        //         break;
+        //     default:
+        //         cerr << "Wrong neighbor generation strategy" << endl;
+        //         exit(-1);
+        // }
+        //succ = generateNeighborByEarlyConflict(); //my strategy, generate neighbor by earlier conflict first
+        succ = generateNeighborByEarlyCollisionGraph();
+        
+        if(!succ || neighbor.agents.empty())
+        {
+            runtime = ((fsec)(Time::now() - start_time)).count();
+            continue;
+        }
+
+        // get colliding pairs
+        neighbor.old_colliding_pairs.clear();
+        neighbor.old_colliding_pairs_windowed.clear(); //windowed
+
+        for (int a: neighbor.agents)
+        {
+            for (auto j: time_collision_graph[a]) //since collision graph is already make sure everything is unique (if two pairs seems, then the time is the same)
+            {
+                //j is key-value pair, while key is the agent, value is the time
+                neighbor.old_colliding_pairs[make_pair(min(a, j.first), max(a, j.first))] = j.second;
+                if (j.second <= commit_window)
+                    neighbor.old_colliding_pairs_windowed[make_pair(min(a, j.first), max(a, j.first))] = j.second;
+            }
+        }
+        if (neighbor.old_colliding_pairs.empty() && neighbor.old_colliding_pairs_windowed.empty()) //no need to replan
+        {
+            assert(init_destroy_strategy == RANDOM_BASED);
+            // if (ALNS) // update destroy heuristics
+            // {
+            //     destroy_weights[selected_neighbor] = (1 - decay_factor) * destroy_weights[selected_neighbor];
+            // }
+            runtime = ((fsec)(Time::now() - start_time)).count();
+            continue;
+        }
+        // store the neighbor information
+        neighbor.old_paths.resize(neighbor.agents.size());
+        neighbor.old_sum_of_costs = 0;
+
+        for (int i = 0; i < (int)neighbor.agents.size(); i++)
+        {
+            int a = neighbor.agents[i];
+            //if (replan_algo_name == "PP" || neighbor.agents.size() == 1)
+            neighbor.old_paths[i] = agents[a].path;
+            path_table.deletePath(neighbor.agents[i]);
+            neighbor.old_sum_of_costs += (int) agents[a].path.size() - 1;
+        }
+        if (screen >= 2)
+        {
+            cout << "Neighbors: ";
+            for (auto a : neighbor.agents)
+                cout << a << ", ";
+            cout << endl;
+            cout << "Old colliding pairs (" << neighbor.old_colliding_pairs.size() << "): ";
+            for (const auto & p : neighbor.old_colliding_pairs)
+            {
+                cout << "(" << p.first.first << "," << p.first.second << ",:" << p.second << "), ";
+            }
+            cout << endl;
+            cout << "Old colliding pairs winodowed: "<<neighbor.old_colliding_pairs_windowed.size() <<endl;
+            for (const auto & p : neighbor.old_colliding_pairs_windowed)
+            {
+                cout << "(" << p.first.first << "," << p.first.second << ",:" << p.second << "), ";
+            }
+        }
+
+        // if (replan_algo_name == "PP" || neighbor.agents.size() == 1)
+        //     succ = runPP();
+        // else if (replan_algo_name == "GCBS")
+        //     succ = runGCBS();
+        // else if (replan_algo_name == "PBS")
+        //     succ = runPBS();
+        // else
+        // {
+        //     cerr << "Wrong replanning strategy" << endl;
+        //     exit(-1);
+        // }
+        succ = runTimePP();
+
+        //     if (ALNS) // update destroy heuristics
+        //     {
+        //         // if (neighbor.colliding_pairs.size() < neighbor.old_colliding_pairs.size())
+        //         //     destroy_weights[selected_neighbor] =
+        //         //             reaction_factor * (double)(neighbor.old_colliding_pairs.size() -
+        //         //             neighbor.colliding_pairs.size()) // / neighbor.agents.size()
+        //         //             + (1 - reaction_factor) * destroy_weights[selected_neighbor];
+        //         //my windowed ver
+        //         if (neighbor.colliding_pairs_windowed.size() < neighbor.old_colliding_pairs_windowed.size())
+        //             //neighbor.colliding_pairs.size() < neighbor.old_colliding_pairs.size())
+        //             destroy_weights[selected_neighbor] =
+        //                     reaction_factor * (double)(neighbor.old_colliding_pairs_windowed.size() -
+        //                     neighbor.colliding_pairs_windowed.size()) // / neighbor.agents.size()
+        //                     + (1 - reaction_factor) * destroy_weights[selected_neighbor];
+        //         else if (neighbor.colliding_pairs_windowed.size() == neighbor.old_colliding_pairs_windowed.size() &&
+        //         neighbor.colliding_pairs.size() < neighbor.old_colliding_pairs.size())
+        //             destroy_weights[selected_neighbor] =
+        //                     reaction_factor * (double)(neighbor.old_colliding_pairs.size() -
+        //                     neighbor.colliding_pairs.size()) // / neighbor.agents.size()
+        //                     + (1 - reaction_factor) * destroy_weights[selected_neighbor];
+        //         else
+        //             destroy_weights[selected_neighbor] =
+        //                     (1 - decay_factor) * destroy_weights[selected_neighbor];
+        //     }
+        if (screen >= 2)
+            cout << "New colliding pairs = " << neighbor.colliding_pairs.size() << endl;
+        if (screen >= 2)
+            cout <<"New windowed colliding pairs = "<< neighbor.colliding_pairs_windowed.size() <<endl;
+        if (succ) // update collision graph
+        {
+            num_of_colliding_pairs += (int)neighbor.colliding_pairs.size() - (int)neighbor.old_colliding_pairs.size();
+            num_of_colliding_pairs_windowed  += (int)neighbor.colliding_pairs_windowed.size() - (int)neighbor.old_colliding_pairs_windowed.size();
+
+
+            for(const auto& collidings : neighbor.old_colliding_pairs)
+            {
+                // time_collision_graph[collidings.first.first].erase(collidings.first.second);
+                // time_collision_graph[collidings.first.second].erase(collidings.first.first);
+                int a1 = collidings.first.first;
+                int a2 = collidings.first.second;
+                time_collision_graph[a1].erase(a2);
+                time_collision_graph[a2].erase(a1);
+            }
+            for(const auto& collidings : neighbor.colliding_pairs)
+            {
+                // time_collision_graph[collidings.first.first].emplace(collidings.first.second);
+                // time_collision_graph[collidings.first.second].emplace(collidings.first.first);
+                int a1 = collidings.first.first;
+                int a2 = collidings.first.second;
+                time_collision_graph[a1][a2]=collidings.second;
+                time_collision_graph[a2][a1]=collidings.second;
+            }
+            //update the earliest
+            earlies_colliding_pairs = make_tuple(MAX_TIMESTEP,-1,-1);
+            for (int a = 0; a < time_collision_graph.size(); a++)
+            {
+                for (auto colliding: time_collision_graph[a])
+                {
+                    if (colliding.second < std::get<0>(earlies_colliding_pairs))
+                    {
+                        earlies_colliding_pairs = make_tuple(colliding.second,min(a,colliding.first), max(colliding.first,a));
+                    }
+                }
+            }
+            if (screen >= 2)
+                printCollisionGraph();
+        }
+        runtime = ((fsec)(Time::now() - start_time)).count();
+        sum_of_costs += neighbor.sum_of_costs - neighbor.old_sum_of_costs;
+        if (screen >= 1)
+        {
+            cout << "Iteration " << iteration_stats.size() << ", "
+                    << "group size = " << neighbor.agents.size() << ", "
+                    << "colliding pairs = " << num_of_colliding_pairs << ", "
+                    << "solution cost = " << sum_of_costs << ", "
+                    << "remaining time = " << time_limit - runtime << endl;
+            cout<<"old colliding pairs windowed = "<<num_of_colliding_pairs_windowed<<endl;
+        }
+        iteration_stats.emplace_back(neighbor.agents.size(), sum_of_costs, runtime, replan_algo_name,
+                                    0, num_of_colliding_pairs,num_of_colliding_pairs_windowed);
+    }
+    conflicts_in_commit_window.push_back(num_of_colliding_pairs_windowed);
+    conflicts_all.push_back(num_of_colliding_pairs);
+
+    printResult();
+    if (commit_window == -1)
+        return (num_of_colliding_pairs == 0);
+    return (num_of_colliding_pairs_windowed == 0);
+}
+
 // bool InitLNS::runGCBS()
 // {
 //     vector<SingleAgentSolver*> search_engines;
@@ -1070,7 +1286,7 @@ bool InitLNS::updateCollidingPairsByTime(unordered_map<pair<int,int>,int> & coll
 //     return true;
 // }
 
-bool InitLNS::generateNeighborByCollisionGraph() //update by chossing the earliest
+bool InitLNS::generateNeighborByEarlyCollisionGraph() //update by chossing the earliest
 {
     //unordered_map<int, set<int>> G;
     //unordered_set<int> G;
@@ -1110,18 +1326,23 @@ bool InitLNS::generateNeighborByCollisionGraph() //update by chossing the earlie
     {
         neighbors_set.insert(v);
         int a = v;
+        //std::cout<<"first agent: "<<a<<std::endl;
         //G.erase(v);
         while ((int)neighbors_set.size() < neighbor_size)
         {
             // int a = *std::next(G.begin(), rand() % G.size());
             // neighbors_set.insert(a);
             //int a = *std::next(time_collision_graph[a].begin(), rand() % time_collision_graph[a].size());
-            while (neighbors_set.find(a) != neighbors_set.end())
+            int next_a = a;
+            while (neighbors_set.find(next_a) != neighbors_set.end())
             {
-                a = (*std::next(time_collision_graph[a].begin(), rand() % time_collision_graph[a].size())).first;
+                next_a = (*std::next(time_collision_graph[a].begin(), rand() % time_collision_graph[a].size())).first;
             }
+            a = next_a;
+            //std::cout<<"next agent: "<<a<<" ";
             neighbors_set.insert(a);
         }
+        std::cout<<std::endl;
     }
     neighbor.agents.assign(neighbors_set.begin(), neighbors_set.end());
     if (screen >= 2)
