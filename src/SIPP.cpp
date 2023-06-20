@@ -38,7 +38,7 @@ Path SIPP::findPath(const ConstraintTable& constraint_table)
     // generate start and add it to the OPEN & FOCAL list
     auto h = max(max(my_heuristic[start_location], holding_time), last_target_collision_time + 1);
     auto start = new SIPPNode(start_location, 0, h, nullptr, 0, get<1>(interval), get<1>(interval),
-                                get<2>(interval), get<2>(interval));
+                                get<2>(interval), get<2>(interval), get<2>(interval));
     pushNodeToFocal(start);
 
     while (!focal_list.empty())
@@ -46,7 +46,7 @@ Path SIPP::findPath(const ConstraintTable& constraint_table)
         auto* curr = focal_list.top();
         focal_list.pop();
         curr->in_openlist = false;
-        if (curr->timestep <= commit_window && curr->num_of_conflicts > 0)
+        if (window_prune && curr->timestep <= commit_window && curr->num_of_conflicts > 0)
             continue;
         num_expanded++;
         assert(curr->location >= 0);
@@ -92,11 +92,20 @@ Path SIPP::findPath(const ConstraintTable& constraint_table)
                 auto next_collisions = curr->num_of_conflicts +
                                     // (int)curr->collision_v * max(next_timestep - curr->timestep - 1, 0) + // wait time
                                       (int)next_v_collision + (int)next_e_collision;
+                int next_g_conflicts;
+                if (!window_penalty.empty() && next_timestep <= commit_window*window_penalty.size())
+                {
+                    next_g_conflicts = curr->g_conflicts + window_penalty[next_timestep/commit_window - 1] * ((int)next_v_collision + (int)next_e_collision);
+                }
+                else
+                {
+                    next_g_conflicts = curr->g_conflicts + (int)next_v_collision + (int)next_e_collision;
+                }
                 auto next_h_val = max(my_heuristic[next_location], (next_collisions > 0?
                     holding_time : curr->getFVal()) - next_timestep); // path max
                 // generate (maybe temporary) node
                 auto next = new SIPPNode(next_location, next_timestep, next_h_val, curr, next_timestep,
-                                         next_high_generation, next_high_expansion, next_v_collision, next_collisions);
+                                         next_high_generation, next_high_expansion, next_v_collision, next_collisions,next_g_conflicts);
                 // try to retrieve it from the hash table
                 if (dominanceCheck(next))
                     pushNodeToFocal(next);
@@ -114,16 +123,18 @@ Path SIPP::findPath(const ConstraintTable& constraint_table)
             auto next_collisions = curr->num_of_conflicts +
                     // (int)curr->collision_v * max(next_timestep - curr->timestep - 1, 0) +
 		    (int)get<2>(interval);
-            //we also add windowed conflicts
-            // auto next_windowed_collision = curr->num_of_conflicts_windowed;
-            // if (curr->timestep <= commit_window)
-            // {
-            //     if (constraint_table.constrained(curr->location,curr->timestep+1))
-            //         next_windowed_collision++;
-            // }
+            int next_g_conflicts;
+            if (!window_penalty.empty() && next_timestep <= commit_window*window_penalty.size())
+            {
+                next_g_conflicts = curr->g_conflicts + window_penalty[next_timestep/commit_window - 1] * (int)get<2>(interval);
+            }
+            else
+            {
+                next_g_conflicts = curr->g_conflicts + (int)get<2>(interval);
+            }
             auto next = new SIPPNode(curr->location, next_timestep, next_h_val, curr, next_timestep,
                                      get<1>(interval), get<1>(interval), get<2>(interval),
-                                     next_collisions);
+                                     next_collisions,next_g_conflicts);
             next->wait_at_goal = (curr->location == goal_location);
             if (dominanceCheck(next))
                 pushNodeToFocal(next);

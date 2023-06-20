@@ -18,10 +18,14 @@ public:
 
     SIPPNode() : LLNode() {}
 	SIPPNode(int loc, int g_val, int h_val, SIPPNode* parent, int timestep, int high_generation, int high_expansion,
-	        bool collision_v, int num_of_conflicts) :
-            LLNode(loc, g_val, h_val, parent, timestep, num_of_conflicts), high_generation(high_generation),
-            high_expansion(high_expansion), collision_v(collision_v) 
+	        bool collision_v, int num_of_conflicts, int g_conflicts) :
+            LLNode(loc, g_val, h_val, parent, timestep, num_of_conflicts,g_conflicts), high_generation(high_generation),
+            high_expansion(high_expansion), collision_v(collision_v)
 			{}
+	SIPPNode(int loc, int g_val, int h_val, SIPPNode* parent, int timestep, int high_generation, int high_expansion,
+	        bool collision_v, int num_of_conflicts) :
+            LLNode(loc, g_val, h_val, parent, timestep, num_of_conflicts,g_conflicts), high_generation(high_generation),
+            high_expansion(high_expansion), collision_v(collision_v){g_conflicts = num_of_conflicts;}
 	~SIPPNode() {}
 
 	void copy(const SIPPNode& other) // copy everything except for handles

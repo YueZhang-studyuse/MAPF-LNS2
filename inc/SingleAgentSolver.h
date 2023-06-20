@@ -11,6 +11,7 @@ public:
 	LLNode* parent = nullptr;
 	int timestep = 0;
 	int num_of_conflicts = 0;
+	int g_conflicts = 0;
 	bool in_openlist = false;
 	bool wait_at_goal = false; // the action is to wait at the goal vertex or not. This is used for >lenghth constraints
     bool is_goal = false;
@@ -37,7 +38,7 @@ public:
 	{
 		bool operator()(const LLNode* n1, const LLNode* n2) const // returns true if n1 > n2
 		{
-			if (n1->num_of_conflicts == n2->num_of_conflicts)
+			if (n1->g_conflicts == n2->g_conflicts)
 			{
                 if (n1->g_val + n1->h_val == n2->g_val + n2->h_val)
                 {
@@ -49,7 +50,7 @@ public:
                 }
                 return n1->g_val+n1->h_val >= n2->g_val+n2->h_val;  // break ties towards smaller f_vals (prefer shorter solutions)
 			}
-			return n1->num_of_conflicts >= n2->num_of_conflicts;  // n1 > n2 if it has more conflicts
+			return n1->g_conflicts >= n2->g_conflicts;  // n1 > n2 if it has more conflicts
 		}
 	};  // used by FOCAL (heap) to compare nodes (top of the heap has min number-of-conflicts)
 
@@ -79,9 +80,9 @@ public:
 
 
 	LLNode() {}
-	LLNode(int location, int g_val, int h_val, LLNode* parent, int timestep, int num_of_conflicts) :
+	LLNode(int location, int g_val, int h_val, LLNode* parent, int timestep, int num_of_conflicts, int g_conflicts) :
 		location(location), g_val(g_val), h_val(h_val), parent(parent), timestep(timestep),
-		num_of_conflicts(num_of_conflicts) { }
+		num_of_conflicts(num_of_conflicts), g_conflicts(g_conflicts){}
 	LLNode(const LLNode& other) { copy(other); }
     ~LLNode()= default;
 
@@ -95,6 +96,7 @@ public:
 		num_of_conflicts = other.num_of_conflicts;
 		wait_at_goal = other.wait_at_goal;
 		is_goal = other.is_goal;
+		g_conflicts = other.g_conflicts;
 	}
     inline int getFVal() const { return g_val + h_val; }
 };
@@ -143,6 +145,10 @@ public:
 	// int getGoalLocation() const {return instance.goal_locations[agent]; }
 
 	bool debugmode = false;
+
+	//for windowed development
+	bool window_prune = false;
+	vector<int> window_penalty;
 
 	SingleAgentSolver(const Instance& instance, int agent) :
 		instance(instance), //agent(agent), 

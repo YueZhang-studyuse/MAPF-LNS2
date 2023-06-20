@@ -14,7 +14,7 @@ public:
 	AStarNode() : LLNode() {}
     AStarNode(const AStarNode& other) : LLNode(other) {} // copy everything except for handles
 	AStarNode(int loc, int g_val, int h_val, LLNode* parent, int timestep, int num_of_conflicts) :
-		LLNode(loc, g_val, h_val, parent, timestep, num_of_conflicts) {}
+		LLNode(loc, g_val, h_val, parent, timestep, num_of_conflicts,num_of_conflicts) {}
 
 
 	~AStarNode() {}
