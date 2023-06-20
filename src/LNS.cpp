@@ -110,26 +110,24 @@ bool LNS::runLns2(bool has_initial, bool conflict_in_window)
         }
     }
     //if we have a initial solution, but has conflicts in window
-    //1. simpliest, still pibt+single agent shorest path
-    else if (conflict_in_window)
-    {
-        succ = runCommitInitPIBT();
-        if (succ)
-        {
-            //attach single agent shorest path to it
-        }
-        else
-        {
-            std::cout<<"initial 2 pibt failed"<<std::endl;
-            exit(-1);
-        }
-    }
+    //1.we still use that
+    // else if (conflict_in_window)
+    // {
+    //     //succ = runCommitInitPIBT();
+    //     if (succ)
+    //     {
+    //         //attach single agent shorest path to it
+    //     }
+    //     else
+    //     {
+    //         std::cout<<"initial 2 pibt failed"<<std::endl;
+    //         exit(-1);
+    //     }
+    // }
     //then no conflict in window, we just use lns2, we also need to update confliding pairs in lns2 with our old path
-    init_lns = new InitLNS(instance, agents, time_limit - initial_solution_runtime,
-                    replan_algo_name,init_destory_name, neighbor_size, screen);
-    init_lns->commit_window = commit_window;
             //init_lns->check_initial = !initial_solution_feasible;
     succ = init_lns->run();
+
     if (succ) // accept new paths
     {
         path_table.reset();

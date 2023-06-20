@@ -301,9 +301,9 @@ int main(int argc, char** argv)
     }
     else if (vm["solver"].as<string>() == "LNS2-Online") // my commit lns
     {
-        double initial_time = 300;
-        double step_time = 1;
+        double step_time = 10;
         double commit_step = vm["commitStep"].as<int>();
+        double initial_time = step_time*commit_step;
         int max_iterations = MAX_TIMESTEP;
         //note here I put future path start = commited path (I assume start at timestep 0?)
         vector<list<int>> commited_paths;
@@ -327,7 +327,7 @@ int main(int argc, char** argv)
                 vm["truncatePaths"].as<bool>(),
                 screen, pipp_option);
         lns.commit_window = commit_step;
-        lns.setRuntimeLimit(step_time*commit_step);
+        lns.setRuntimeLimit(step_time*commit_step+lns.preprocessing_time);
         while(!commited_done)
         {
             //update start locations
@@ -356,48 +356,51 @@ int main(int argc, char** argv)
                     }
                 }
                 //run lns to get next commit
-                lns.setRuntimeLimit(60);
                 succ = lns.runLns2(!initial_run,false); 
-                lns.validateSolution();
+                // lns.validateSolution();
                 return 0;
                 if (succ)
                 {
                     //lns.validateSolutionByWindow(commit_step);
-                    lns.validateSolutionDebugMode();
+                    //lns.validateSolutionDebugMode();
                     future_paths.clear();
                     future_paths.resize(instance.getDefaultNumberOfAgents());
                     if (initial_run)
-                        lns.commitPath(commit_step,commited_paths,future_paths,false,total_step);
-                    else
-                        lns.commitPath(commit_step,commited_paths,future_paths,true,total_step);
-                    if (lns.lns2_solutin_conflicts == 0)
-                        solution_feasible = true;
-                    solution_costs.emplace_back(lns.sum_of_costs);
-                    total_step+=commit_step;
-                    int sic = 0;
-                    for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
                     {
-                        auto path = commited_paths[i];
-                        sic+= path.size()-1;
-                        if (path.back() == instance.getGoals()[i])
+                        lns.commitPath(commit_step,commited_paths,future_paths,false,total_step);
+                        solution_costs.emplace_back(lns.sum_of_costs);
+                    }
+                    else
+                    {
+                        lns.commitPath(commit_step,commited_paths,future_paths,true,total_step);
+                        int sic = 0;
+                        for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
                         {
-                            bool first = true;
-                            for (auto it = path.rbegin(); it != path.rend();++it)
+                            auto path = commited_paths[i];
+                            sic+= path.size()-1;
+                            if (path.back() == instance.getGoals()[i])
                             {
-                                if (first)
+                                bool first = true;
+                                for (auto it = path.rbegin(); it != path.rend();++it)
                                 {
-                                    first = false;
-                                    continue;
-                                }
-                                if (*it == instance.getGoals()[i])
-                                {
-                                    sic--;
+                                    if (first)
+                                    {
+                                        first = false;
+                                        continue;
+                                    }
+                                    if (*it == instance.getGoals()[i])
+                                    {
+                                        sic--;
+                                    }
                                 }
                             }
+                            sic+=future_paths[i].size()-1;
                         }
-                        sic+=future_paths[i].size()-1;
+                        solution_costs.emplace_back(sic);
                     }
-                    solution_costs.emplace_back(sic);
+                    
+                    if (lns.lns2_solutin_conflicts == 0)
+                        solution_feasible = true;
                     total_step+=commit_step;
                     //std::cout<<"Preprocessing time: "<<lns.preprocessing_time<<std::endl;
                 }
