@@ -28,7 +28,7 @@ class PathTableWC // with collisions
 {
 public:
     int makespan = 0;
-    vector< vector< list<int> > > table; // this stores the paths, the value is the id of the agent
+    vector< vector< list<int> > > table; // this stores the paths, the value is the id of the agent //map_size<at this location t range <agents>>
     vector<int> goals; // this stores the goal locatons of the paths: key is the location, while value is the timestep when the agent reaches the goal
     void reset() { auto map_size = table.size(); table.clear(); table.resize(map_size); goals.assign(map_size, MAX_COST); makespan = 0; }
     void insertPath(int agent_id, const Path& path);

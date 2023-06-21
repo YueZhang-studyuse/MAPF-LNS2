@@ -59,7 +59,7 @@ public:
     void validateSolutionByWindow(int window) const;
     void initialCommitPIBT(int commit_step, vector<list<int>> &commit_path, vector<list<int>> &future_path,bool skip_start,int current_time);
     bool has_conflict_last_commit = false;
-    bool runLns2(bool has_initial, bool conflict_in_window);
+    bool runLns2(bool has_initial, bool &conflict_in_window);
     int lns2_solutin_conflicts = 0;
     void validateSolutionDebugMode() const;
 

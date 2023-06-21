@@ -301,7 +301,7 @@ int main(int argc, char** argv)
     }
     else if (vm["solver"].as<string>() == "LNS2-Online") // my commit lns
     {
-        double step_time = 10;
+        double step_time = 1;
         double commit_step = vm["commitStep"].as<int>();
         double initial_time = step_time*commit_step;
         int max_iterations = MAX_TIMESTEP;
@@ -313,6 +313,7 @@ int main(int argc, char** argv)
         bool commited_done = false;
         bool initial_run = true;
         bool solution_feasible = false;
+        bool conflict_in_window = false;
         double total_step = 0;
         list<int> solution_costs;
         LNS lns(instance, initial_time,
@@ -330,6 +331,7 @@ int main(int argc, char** argv)
         lns.setRuntimeLimit(step_time*commit_step+lns.preprocessing_time);
         while(!commited_done)
         {
+            cout<<"step: "<<total_step<<endl;
             //update start locations
             for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
             {
@@ -354,11 +356,18 @@ int main(int argc, char** argv)
                         cerr << "The input path wrong" << endl;
                         exit(-1);
                     }
+                    lns.setRuntimeLimit(step_time*commit_step);
+                    lns.setIterations(max_iterations);
+                }
+                if (conflict_in_window)
+                {
+                    lns.clearAll(vm["destoryStrategy"].as<string>());
+                    lns.setRuntimeLimit(step_time*commit_step);
+                    lns.setIterations(max_iterations);
                 }
                 //run lns to get next commit
-                succ = lns.runLns2(!initial_run,false); 
+                succ = lns.runLns2(!initial_run,conflict_in_window); 
                 // lns.validateSolution();
-                return 0;
                 if (succ)
                 {
                     //lns.validateSolutionByWindow(commit_step);
@@ -402,7 +411,7 @@ int main(int argc, char** argv)
                     if (lns.lns2_solutin_conflicts == 0)
                         solution_feasible = true;
                     total_step+=commit_step;
-                    //std::cout<<"Preprocessing time: "<<lns.preprocessing_time<<std::endl;
+                    //lns.validateCommitSolution(commited_paths);
                 }
                 else
                 {
@@ -416,8 +425,8 @@ int main(int argc, char** argv)
             else
             {
                 lns.clearAll(vm["destoryStrategy"].as<string>());
-                //lns.setIterations(max_iterations);
-                //lns.setRuntimeLimit(step_time*commit_step);
+                lns.setIterations(max_iterations);
+                lns.setRuntimeLimit(step_time*commit_step);
                 //load initial path
                 if (!lns.loadPaths(future_paths))
                 {
@@ -502,17 +511,17 @@ int main(int argc, char** argv)
                 }
             }
         }
-        cout<<"commited path: "<<endl;;
-        for (int i = 0; i < commited_paths.size(); i++)
-        {
-            cout<<"agent "<<i<<" ";
-            for (auto p: commited_paths[i])
-            {
-                cout<<p<<",";
-            }
-            cout<<endl;
-        }
-        cout<<endl;
+        // cout<<"commited path: "<<endl;;
+        // for (int i = 0; i < commited_paths.size(); i++)
+        // {
+        //     cout<<"agent "<<i<<" ";
+        //     for (auto p: commited_paths[i])
+        //     {
+        //         cout<<p<<",";
+        //     }
+        //     cout<<endl;
+        // }
+        //cout<<endl;
         lns.validateCommitSolution(commited_paths);
         cout<<"num of commits per step:"<<endl;
         cout<<commit_step<<endl;

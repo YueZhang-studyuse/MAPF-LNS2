@@ -55,6 +55,27 @@ LNS::LNS(const Instance& instance, double time_limit, string init_algo_name, str
 
 bool LNS::runCommitInitPIBT()
 {
+    // neighbor.agents.resize(agents.size());
+    // for (int i = 0; i < (int)agents.size(); i++)
+    //     neighbor.agents[i] = i;
+    // neighbor.old_sum_of_costs = MAX_COST;
+    // neighbor.sum_of_costs = 0;
+
+    // auto shuffled_agents = neighbor.agents;
+    //  std::random_shuffle(shuffled_agents.begin(), shuffled_agents.end());
+
+    // MAPF P = preparePIBTProblem(shuffled_agents);
+
+    // // seed for solver
+    // auto MT_S = new std::mt19937(0);
+    // PIBT solver(&P,MT_S);
+    // solver.setTimeLimit(time_limit);
+    // bool result = solver.solve();
+    // if (result)
+    //     updatePIBTResult(P.getA(),shuffled_agents);
+    // return result;
+
+
     initial_solution_runtime = 0;
     start_time = Time::now();
     bool succ;
@@ -80,7 +101,7 @@ bool LNS::runCommitInitPIBT()
     return result;
 }
 
-bool LNS::runLns2(bool has_initial, bool conflict_in_window)
+bool LNS::runLns2(bool has_initial, bool &conflict_in_window)
 {
     sum_of_distances = 0;
     for (const auto & agent : agents)
@@ -95,7 +116,6 @@ bool LNS::runLns2(bool has_initial, bool conflict_in_window)
                     replan_algo_name,init_destory_name, neighbor_size, screen);
     init_lns->commit_window = commit_window;
     //init_lns->check_initial = !initial_solution_feasible;
-
     if (!has_initial_solution)
     {
         succ = runCommitInitPIBT();
@@ -109,21 +129,21 @@ bool LNS::runLns2(bool has_initial, bool conflict_in_window)
             exit(-1);
         }
     }
-    //if we have a initial solution, but has conflicts in window
-    //1.we still use that
-    // else if (conflict_in_window)
-    // {
-    //     //succ = runCommitInitPIBT();
-    //     if (succ)
-    //     {
-    //         //attach single agent shorest path to it
-    //     }
-    //     else
-    //     {
-    //         std::cout<<"initial 2 pibt failed"<<std::endl;
-    //         exit(-1);
-    //     }
-    // }
+    // if we have a initial solution, but has conflicts in window
+    // 1. start from pibt+single agent shorest path
+    else if (conflict_in_window)
+    {
+        succ = runCommitInitPIBT();
+        if (succ)
+        {
+            //attach single agent shorest path to it
+        }
+        else
+        {
+            std::cout<<"initial 2 pibt failed"<<std::endl;
+            exit(-1);
+        }
+    }
     //then no conflict in window, we just use lns2, we also need to update confliding pairs in lns2 with our old path
             //init_lns->check_initial = !initial_solution_feasible;
     succ = init_lns->run();
@@ -143,6 +163,7 @@ bool LNS::runLns2(bool has_initial, bool conflict_in_window)
     initial_solution_runtime = ((fsec)(Time::now() - start_time)).count();
     lns2_solutin_conflicts = init_lns->num_of_colliding_pairs;
     init_lns->printPath();
+    conflict_in_window = (init_lns->num_conflicts_windowed.find(1) != init_lns->num_conflicts_windowed.end() && init_lns->num_conflicts_windowed[1] != 0);
     return succ;
 }
 
@@ -1551,7 +1572,7 @@ void LNS::commitPath(int commit_step, vector<list<int>> &commit_path, vector<lis
 {
     for (const auto &agent : agents)
     {
-        if (screen == 3 && (agent.id == 15 || agent.id == 269))
+        if (screen == 1)
             cout<<"Commiting: "<<agent.id<<endl;
         //agent reach target before, but need to de-tour due to resolving conflict, so we add the time reach target as waiting
         // if (current_time != 0 && agent.path.size() > 1 && commit_path[agent.id].size() <= current_time)
@@ -1581,14 +1602,14 @@ void LNS::commitPath(int commit_step, vector<list<int>> &commit_path, vector<lis
                 if(step <commit_step)
                 {
                     commit_path[agent.id].emplace_back(state.location);
-                    if (screen == 3 && (agent.id == 15 || agent.id == 269))
+                    if (screen == 1)
                         cout<< "(" << instance.getColCoordinate(state.location) << "," <<
                                 instance.getRowCoordinate(state.location) << ")->";
                 }
                 else if (step == commit_step)
                 {
                     commit_path[agent.id].emplace_back(state.location);
-                    if (screen == 3 && (agent.id == 15 || agent.id == 269))
+                    if (screen == 1)
                     {
                         cout<< "(" << instance.getColCoordinate(state.location) << "," <<
                                     instance.getRowCoordinate(state.location) << ")"<<endl;
@@ -1596,14 +1617,14 @@ void LNS::commitPath(int commit_step, vector<list<int>> &commit_path, vector<lis
                     }
                         
                     future_path[agent.id].emplace_back(state.location);
-                    if (screen == 3 && (agent.id == 15 || agent.id == 269))
+                    if (screen == 1)
                         cout<< "(" << instance.getColCoordinate(state.location) << "," <<
                                 instance.getRowCoordinate(state.location) << ")->";
                 }
                 else
                 {
                     future_path[agent.id].emplace_back(state.location);
-                    if (screen == 3 && (agent.id == 15 || agent.id == 269))
+                    if (screen == 1)
                         cout<< "(" << instance.getColCoordinate(state.location) << "," <<
                                 instance.getRowCoordinate(state.location) << ")->";
                 }
@@ -1625,7 +1646,7 @@ void LNS::commitPath(int commit_step, vector<list<int>> &commit_path, vector<lis
                     }
                 }
                 commit_path[agent.id].emplace_back(state.location);
-                if (screen == 3 && (agent.id == 15 || agent.id == 269))
+                if (screen == 1)
                     cout<< "(" << instance.getColCoordinate(state.location) << "," <<
                             instance.getRowCoordinate(state.location) << ")->";
                 step++;
@@ -1635,17 +1656,17 @@ void LNS::commitPath(int commit_step, vector<list<int>> &commit_path, vector<lis
                 commit_path[agent.id].emplace_back(commit_path[agent.id].back());
                 stay_target[agent.id]++;
             }
-            if (screen == 3 && (agent.id == 15 || agent.id == 269))
+            if (screen == 1)
             {
                 cout<<endl;
                 cout<<"Remaining: "<<endl;
             }
             future_path[agent.id].emplace_back(commit_path[agent.id].back());
-            if (screen == 3 && (agent.id == 15 || agent.id == 269))
+            if (screen == 1)
                 cout<< "(" << instance.getColCoordinate(commit_path[agent.id].back()) << "," <<
                         instance.getRowCoordinate(commit_path[agent.id].back()) << ")->";
         }
-        if (screen == 3 && (agent.id == 15 || agent.id == 269))
+        if (screen == 1)
             cout<<endl;
     }
 }
@@ -1676,7 +1697,7 @@ void LNS::initialCommitPIBT(int commit_step, vector<list<int>> &commit_path, vec
                 if(step <commit_step)
                 {
                     commit_path[agent.id].emplace_back(state.location);
-                    if (screen == 3)
+                    if (screen == 2)
                         cout<< "(" << instance.getColCoordinate(state.location) << "," <<
                                 instance.getRowCoordinate(state.location) << ")->";
                 }
@@ -1836,10 +1857,10 @@ void LNS::validateCommitSolution(vector<list<int>> commited_paths) const
         {
             if (!instance.validMove(a1_.path[t - 1].location, a1_.path[t].location))
             {
-                cerr << "The path of agent " << a1_.id << " jump from "
+                cout << "The path of agent " << a1_.id << " jump from "
                      << a1_.path[t - 1].location << " to " << a1_.path[t].location
                      << " between timesteps " << t - 1 << " and " << t << endl;
-                //exit(-1);
+                exit(-1);
             }
         }
         sum += (int) a1_.path.size() - 1;
@@ -1854,17 +1875,17 @@ void LNS::validateCommitSolution(vector<list<int>> commited_paths) const
             {
                 if (a1.path[t].location == a2.path[t].location) // vertex conflict
                 {
-                    cerr << "Find a vertex conflict between agents " << a1.id << " and " << a2.id <<
+                    cout << "Find a vertex conflict between agents " << a1.id << " and " << a2.id <<
                             " at location " << a1.path[t].location << " at timestep " << t << endl;
-                    //exit(-1);
+                    exit(-1);
                 }
                 else if (a1.path[t].location == a2.path[t - 1].location &&
                         a1.path[t - 1].location == a2.path[t].location) // edge conflict
                 {
-                    cerr << "Find an edge conflict between agents " << a1.id << " and " << a2.id <<
+                    cout << "Find an edge conflict between agents " << a1.id << " and " << a2.id <<
                          " at edge (" << a1.path[t - 1].location << "," << a1.path[t].location <<
                          ") at timestep " << t << endl;
-                    //exit(-1);
+                    exit(-1);
                 }
             }
             int target = a1.path.back().location;
@@ -1872,10 +1893,10 @@ void LNS::validateCommitSolution(vector<list<int>> commited_paths) const
             {
                 if (a2.path[t].location == target)  // target conflict
                 {
-                    cerr << "Find a target conflict where agent " << a2.id << " (of length " << a2.path.size() - 1<<
+                    cout << "Find a target conflict where agent " << a2.id << " (of length " << a2.path.size() - 1<<
                          ") traverses agent " << a1.id << " (of length " << a1.path.size() - 1<<
                          ")'s target location " << target << " at timestep " << t << endl;
-                    //exit(-1);
+                    exit(-1);
                 }
             }
         }

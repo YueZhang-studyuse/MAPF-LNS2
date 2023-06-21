@@ -147,8 +147,8 @@ public:
 	bool debugmode = false;
 
 	//for windowed development
-	bool window_prune = false;
-	vector<int> window_penalty;
+	bool window_prune = true;
+	vector<int> window_penalty = {8,4,2,1};
 
 	SingleAgentSolver(const Instance& instance, int agent) :
 		instance(instance), //agent(agent), 

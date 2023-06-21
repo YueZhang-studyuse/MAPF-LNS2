@@ -65,27 +65,24 @@ bool InitLNS::run()
     while (runtime < time_limit and num_of_colliding_pairs > 0)
     {
         assert(instance.validateSolution(paths, sum_of_costs, num_of_colliding_pairs));
-        // if (ALNS)
-        //     chooseDestroyHeuristicbyALNS();
+        if (ALNS)
+            chooseDestroyHeuristicbyALNS();
 
-        // switch (init_destroy_strategy)
-        // {
-        //     case TARGET_BASED:
-        //         succ = generateNeighborByTarget();
-        //         break;
-        //     case COLLISION_BASED:
-        //         succ = generateNeighborByCollisionGraph();
-        //         break;
-        //     case RANDOM_BASED:
-        //         succ = generateNeighborRandomly();
-        //         break;
-        //     default:
-        //         cerr << "Wrong neighbor generation strategy" << endl;
-        //         exit(-1);
-        // }
-        //succ = generateNeighborByEarlyConflict(); //my strategy, generate neighbor by earlier conflict first
-        succ = generateNeighborByEarlyCollisionGraph();
-        
+        switch (init_destroy_strategy)
+        {
+            case TARGET_BASED:
+                succ = generateNeighborByEarlyTarget();
+                break;
+            case COLLISION_BASED:
+                succ = generateNeighborByEarlyCollisionGraph();
+                break;
+            case RANDOM_BASED:
+                succ = generateNeighborRandomly();
+                break;
+            default:
+                cerr << "Wrong neighbor generation strategy" << endl;
+                exit(-1);
+        }
         if(!succ || neighbor.agents.empty())
         {
             runtime = ((fsec)(Time::now() - start_time)).count();
@@ -109,10 +106,10 @@ bool InitLNS::run()
         if (neighbor.old_colliding_pairs.empty() && neighbor.old_colliding_pairs_windowed.empty()) //no need to replan
         {
             assert(init_destroy_strategy == RANDOM_BASED);
-            // if (ALNS) // update destroy heuristics
-            // {
-            //     destroy_weights[selected_neighbor] = (1 - decay_factor) * destroy_weights[selected_neighbor];
-            // }
+            if (ALNS) // update destroy heuristics
+            {
+                destroy_weights[selected_neighbor] = (1 - decay_factor) * destroy_weights[selected_neighbor];
+            }
             runtime = ((fsec)(Time::now() - start_time)).count();
             continue;
         }
@@ -160,30 +157,36 @@ bool InitLNS::run()
         // }
         succ = runTimePP();
 
-        //     if (ALNS) // update destroy heuristics
-        //     {
-        //         // if (neighbor.colliding_pairs.size() < neighbor.old_colliding_pairs.size())
-        //         //     destroy_weights[selected_neighbor] =
-        //         //             reaction_factor * (double)(neighbor.old_colliding_pairs.size() -
-        //         //             neighbor.colliding_pairs.size()) // / neighbor.agents.size()
-        //         //             + (1 - reaction_factor) * destroy_weights[selected_neighbor];
-        //         //my windowed ver
-        //         if (neighbor.colliding_pairs_windowed.size() < neighbor.old_colliding_pairs_windowed.size())
-        //             //neighbor.colliding_pairs.size() < neighbor.old_colliding_pairs.size())
-        //             destroy_weights[selected_neighbor] =
-        //                     reaction_factor * (double)(neighbor.old_colliding_pairs_windowed.size() -
-        //                     neighbor.colliding_pairs_windowed.size()) // / neighbor.agents.size()
-        //                     + (1 - reaction_factor) * destroy_weights[selected_neighbor];
-        //         else if (neighbor.colliding_pairs_windowed.size() == neighbor.old_colliding_pairs_windowed.size() &&
-        //         neighbor.colliding_pairs.size() < neighbor.old_colliding_pairs.size())
-        //             destroy_weights[selected_neighbor] =
-        //                     reaction_factor * (double)(neighbor.old_colliding_pairs.size() -
-        //                     neighbor.colliding_pairs.size()) // / neighbor.agents.size()
-        //                     + (1 - reaction_factor) * destroy_weights[selected_neighbor];
-        //         else
-        //             destroy_weights[selected_neighbor] =
-        //                     (1 - decay_factor) * destroy_weights[selected_neighbor];
-        //     }
+        if (ALNS) // update destroy heuristics
+        {
+            //my windowed ver
+            if (accept_ontime)
+            {
+                if (neighbor.colliding_pairs_windowed.size() < neighbor.old_colliding_pairs_windowed.size())
+                    //neighbor.colliding_pairs.size() < neighbor.old_colliding_pairs.size())
+                    destroy_weights[selected_neighbor] =
+                            reaction_factor * (double)(neighbor.old_colliding_pairs_windowed.size() -
+                            neighbor.colliding_pairs_windowed.size()) // / neighbor.agents.size()
+                            + (1 - reaction_factor) * destroy_weights[selected_neighbor];
+                else if (neighbor.colliding_pairs_windowed.size() == neighbor.old_colliding_pairs_windowed.size() &&
+                neighbor.colliding_pairs.size() < neighbor.old_colliding_pairs.size())
+                    destroy_weights[selected_neighbor] =
+                            reaction_factor * (double)(neighbor.old_colliding_pairs.size() -
+                            neighbor.colliding_pairs.size()) // / neighbor.agents.size()
+                            + (1 - reaction_factor) * destroy_weights[selected_neighbor];
+                else
+                    destroy_weights[selected_neighbor] =
+                            (1 - decay_factor) * destroy_weights[selected_neighbor];
+            }
+            else
+            {
+                if (neighbor.colliding_pairs.size() < neighbor.old_colliding_pairs.size())
+                    destroy_weights[selected_neighbor] =
+                            reaction_factor * (double)(neighbor.old_colliding_pairs.size() -
+                            neighbor.colliding_pairs.size()) // / neighbor.agents.size()
+                            + (1 - reaction_factor) * destroy_weights[selected_neighbor];
+            }
+        }
         if (screen >= 2)
             cout << "New colliding pairs = " << neighbor.colliding_pairs.size() << endl;
         if (screen >= 2)
@@ -245,6 +248,35 @@ bool InitLNS::run()
     conflicts_all.push_back(num_of_colliding_pairs);
 
     printResult();
+
+    //show result for windowed conflicts
+    for (size_t i = 0; i < time_collision_graph.size(); i++)
+    {
+        for (auto collision : time_collision_graph[i])
+        {
+            int j = collision.first;
+            int t = collision.second;
+            if (i < j)
+            {
+                int window_no = (t-1)/commit_window;
+                if (num_conflicts_windowed.find(window_no) != num_conflicts_windowed.end())
+                {
+                    num_conflicts_windowed[window_no]++;
+                }
+                else
+                {
+                     num_conflicts_windowed[window_no]=1;
+                }
+            }
+        }
+    }
+    cout<<"winodw conflicts break up"<<endl;
+    for (auto numbers: num_conflicts_windowed)
+    {
+        cout<<"window "<<numbers.first<<": "<<numbers.second<<", ";
+    }
+    cout<<endl;
+
     if (commit_window == -1)
         return (num_of_colliding_pairs == 0);
     return (num_of_colliding_pairs_windowed == 0);
@@ -460,118 +492,12 @@ bool InitLNS::runForCommit()
     conflicts_all.push_back(num_of_colliding_pairs);
 
     printResult();
+
     if (commit_window == -1)
         return (num_of_colliding_pairs == 0);
     return (num_of_colliding_pairs_windowed == 0);
 }
 
-// bool InitLNS::runGCBS()
-// {
-//     vector<SingleAgentSolver*> search_engines;
-//     search_engines.reserve(neighbor.agents.size());
-//     for (int i : neighbor.agents)
-//     {
-//         search_engines.push_back(agents[i].path_planner);
-//     }
-
-//     // build path tables
-//     vector<PathTable> path_tables(neighbor.agents.size(), PathTable(instance.map_size));
-//     for (int i = 0; i < (int)neighbor.agents.size(); i++)
-//     {
-//         int agent_id = neighbor.agents[i];
-//         for (int j = 0; j < instance.getDefaultNumberOfAgents(); j++)
-//         {
-//             if (j != agent_id and collision_graph[agent_id].count(j) == 0)
-//                 path_tables[i].insertPath(j, agents[j].path);
-//         }
-//     }
-
-//     GCBS gcbs(search_engines, screen - 1, &path_tables);
-//     gcbs.setDisjointSplitting(false);
-//     gcbs.setBypass(true);
-//     gcbs.setTargetReasoning(true);
-
-//     runtime = ((fsec)(Time::now() - start_time)).count();
-//     double T = time_limit - runtime;
-//     if (!iteration_stats.empty()) // replan
-//         T = min(T, replan_time_limit);
-//     gcbs.solve(T);
-//     if (gcbs.best_node->colliding_pairs < (int) neighbor.old_colliding_pairs.size()) // accept new paths
-//     {
-//         auto id = neighbor.agents.begin();
-//         neighbor.colliding_pairs.clear();
-//         for (size_t i = 0; i < neighbor.agents.size(); i++)
-//         {
-//             agents[*id].path = *gcbs.paths[i];
-//             updateCollidingPairs(neighbor.colliding_pairs, agents[*id].id, agents[*id].path);
-//             path_table.insertPath(agents[*id].id, agents[*id].path);
-//             ++id;
-//         }
-//         neighbor.sum_of_costs = gcbs.best_node->sum_of_costs;
-//         return true;
-//     }
-//     else // stick to old paths
-//     {
-//         if (!neighbor.old_paths.empty())
-//         {
-//             for (int id : neighbor.agents)
-//             {
-//                 path_table.insertPath(agents[id].id, agents[id].path);
-//             }
-//             neighbor.sum_of_costs = neighbor.old_sum_of_costs;
-//         }
-//         num_of_failures++;
-//         return false;
-//     }
-// }
-// bool InitLNS::runPBS()
-// {
-//     vector<SingleAgentSolver*> search_engines;
-//     search_engines.reserve(neighbor.agents.size());
-//     vector<const Path*> initial_paths;
-//     initial_paths.reserve(neighbor.agents.size());
-//     for (int i : neighbor.agents)
-//     {
-//         search_engines.push_back(agents[i].path_planner);
-//         initial_paths.push_back(&agents[i].path);
-//     }
-
-//     PBS pbs(search_engines, path_table, screen - 1);
-//     // pbs.setInitialPath(initial_paths);
-//     runtime = ((fsec)(Time::now() - start_time)).count();
-//     double T = time_limit - runtime;
-//     if (!iteration_stats.empty()) // replan
-//         T = min(T, replan_time_limit);
-//     bool succ = pbs.solve(T, (int)neighbor.agents.size(), neighbor.old_colliding_pairs.size());
-//     if (succ and pbs.best_node->getCollidingPairs() < (int) neighbor.old_colliding_pairs.size()) // accept new paths
-//     {
-//         auto id = neighbor.agents.begin();
-//         neighbor.colliding_pairs.clear();
-//         for (size_t i = 0; i < neighbor.agents.size(); i++)
-//         {
-//             agents[*id].path = *pbs.paths[i];
-//             updateCollidingPairs(neighbor.colliding_pairs, agents[*id].id, agents[*id].path);
-//             path_table.insertPath(agents[*id].id);
-//             ++id;
-//         }
-//         assert(neighbor.colliding_pairs.size() == pbs.best_node->getCollidingPairs());
-//         neighbor.sum_of_costs = pbs.best_node->sum_of_costs;
-//         return true;
-//     }
-//     else // stick to old paths
-//     {
-//         if (!neighbor.old_paths.empty())
-//         {
-//             for (int id : neighbor.agents)
-//             {
-//                 path_table.insertPath(agents[id].id);
-//             }
-//             neighbor.sum_of_costs = neighbor.old_sum_of_costs;
-//         }
-//         num_of_failures++;
-//         return false;
-//     }
-// }
 // bool InitLNS::runPP()
 // {
 //     auto shuffled_agents = neighbor.agents;
@@ -689,53 +615,90 @@ bool InitLNS::runTimePP()
                  ", LL nodes = " << agents[id].path_planner->getNumExpanded() <<
                  ", remaining time = " << time_limit - runtime << " seconds. " << endl;
         }
-        // for (auto c: neighbor.colliding_pairs)
-        // {
-        //     int a1,a2,t;
-        //     tie(a1,a2,t) = c;
-        //     if (a1 == 189 || a1 == 218 || a2 == 189 || a2 == 218)
-        //         cout<<"test for collidings "<<a1<<" "<<a2<<" "<<t<<" , ";
-        //     cout<<endl;
-        // }
-        if (neighbor.colliding_pairs_windowed.size() > neighbor.old_colliding_pairs_windowed.size())
-            break;
-        if (neighbor.colliding_pairs_windowed.size() == neighbor.old_colliding_pairs_windowed.size() && neighbor.colliding_pairs.size() >= neighbor.old_colliding_pairs.size())
-            break;
+        if (accept_ontime)
+        {
+            if (neighbor.colliding_pairs_windowed.size() > neighbor.old_colliding_pairs_windowed.size())
+                break;
+            if (neighbor.colliding_pairs_windowed.size() == neighbor.old_colliding_pairs_windowed.size() && neighbor.colliding_pairs.size() >= neighbor.old_colliding_pairs.size())
+                break;
+        }
+        else
+        {
+            if (neighbor.colliding_pairs_windowed.size() > neighbor.old_colliding_pairs_windowed.size())
+                break;
+            if (neighbor.colliding_pairs_windowed.size() == neighbor.old_colliding_pairs_windowed.size() && neighbor.colliding_pairs.size() >= neighbor.old_colliding_pairs.size())
+                break;
+        }
         path_table.insertPath(agents[id].id, agents[id].path);
         ++p;
     }
-    if (p == shuffled_agents.end() && neighbor.colliding_pairs_windowed.size() < neighbor.old_colliding_pairs_windowed.size()) // accept new paths
+    if (accept_ontime)
     {
-        return true;
-    }
-    if (p == shuffled_agents.end() && neighbor.colliding_pairs_windowed.size() == neighbor.old_colliding_pairs_windowed.size() && neighbor.colliding_pairs.size() <= neighbor.old_colliding_pairs.size()) // accept new paths
-    {
-        return true;
-    }
-    else // stick to old paths
-    {
-        if (p != shuffled_agents.end())
-            num_of_failures++;
-        auto p2 = shuffled_agents.begin();
-        while (p2 != p)
+        if (p == shuffled_agents.end() && neighbor.colliding_pairs_windowed.size() < neighbor.old_colliding_pairs_windowed.size()) // accept new paths
         {
-            int a = *p2;
-            path_table.deletePath(agents[a].id);
-            ++p2;
+            return true;
         }
-        if (!neighbor.old_paths.empty())
+        if (p == shuffled_agents.end() && neighbor.colliding_pairs_windowed.size() == neighbor.old_colliding_pairs_windowed.size() && neighbor.colliding_pairs.size() <= neighbor.old_colliding_pairs.size()) // accept new paths
         {
-            p2 = neighbor.agents.begin();
-            for (int i = 0; i < (int)neighbor.agents.size(); i++)
+            return true;
+        }
+        else // stick to old paths
+        {
+            if (p != shuffled_agents.end())
+                num_of_failures++;
+            auto p2 = shuffled_agents.begin();
+            while (p2 != p)
             {
                 int a = *p2;
-                agents[a].path = neighbor.old_paths[i];
-                path_table.insertPath(agents[a].id);
+                path_table.deletePath(agents[a].id);
                 ++p2;
             }
-            neighbor.sum_of_costs = neighbor.old_sum_of_costs;
+            if (!neighbor.old_paths.empty())
+            {
+                p2 = neighbor.agents.begin();
+                for (int i = 0; i < (int)neighbor.agents.size(); i++)
+                {
+                    int a = *p2;
+                    agents[a].path = neighbor.old_paths[i];
+                    path_table.insertPath(agents[a].id);
+                    ++p2;
+                }
+                neighbor.sum_of_costs = neighbor.old_sum_of_costs;
+            }
+            return false;
         }
-        return false;
+    }
+    else
+    {
+        if (p == shuffled_agents.end() && neighbor.colliding_pairs.size() <= neighbor.old_colliding_pairs.size()) // accept new paths
+        {
+            return true;
+        }
+        else // stick to old paths
+        {
+            if (p != shuffled_agents.end())
+                num_of_failures++;
+            auto p2 = shuffled_agents.begin();
+            while (p2 != p)
+            {
+                int a = *p2;
+                path_table.deletePath(agents[a].id);
+                ++p2;
+            }
+            if (!neighbor.old_paths.empty())
+            {
+                p2 = neighbor.agents.begin();
+                for (int i = 0; i < (int)neighbor.agents.size(); i++)
+                {
+                    int a = *p2;
+                    agents[a].path = neighbor.old_paths[i];
+                    path_table.insertPath(agents[a].id);
+                    ++p2;
+                }
+                neighbor.sum_of_costs = neighbor.old_sum_of_costs;
+            }
+            return false;
+        }
     }
 }
 
@@ -1085,7 +1048,7 @@ bool InitLNS::updateCollidingPairs(set<pair<int, int>>& colliding_pairs, int age
     return succ;
 }
 
-// return true if the new p[ath has collisions;
+// return true if the new path has collisions;
 bool InitLNS::updateCollidingPairsByTime(unordered_map<pair<int,int>,int> & colliding_pairs, unordered_map<pair<int,int>,int> & windowed_colliding_pairs, int agent_id, const Path& path) const
 {
     bool succ = false;
@@ -1158,9 +1121,6 @@ bool InitLNS::updateCollidingPairsByTime(unordered_map<pair<int,int>,int> & coll
                 }
             }
         }
-        //auto id = getAgentWithTarget(to, t);
-        //if (id >= 0) // this agent traverses the target of another agent
-        //    colliding_pairs.emplace(min(agent_id, id), max(agent_id, id));
         if (!path_table.goals.empty() && path_table.goals[to] < t) // target conflicts
         { // this agent traverses the target of another agent
             for (auto id : path_table.table[to][path_table.goals[to]]) // look at all agents at the goal time
@@ -1195,7 +1155,7 @@ bool InitLNS::updateCollidingPairsByTime(unordered_map<pair<int,int>,int> & coll
         }
     }
     int goal = path.back().location; // target conflicts - some other agent traverses the target of this agent
-    for (int t = (int)path.size(); t < path_table.table[goal].size(); t++)
+    for (int t = (int)path.size(); t < path_table.table[goal].size(); t++) //path_table.table[goal].size() is the maxium time agents reach this location
     {
         for (auto id : path_table.table[goal][t])
         {
@@ -1226,65 +1186,18 @@ bool InitLNS::updateCollidingPairsByTime(unordered_map<pair<int,int>,int> & coll
     return succ;
 }
 
-// void InitLNS::chooseDestroyHeuristicbyALNS()
-// {
-//     rouletteWheel();
-//     switch (selected_neighbor)
-//     {
-//         case 0 : init_destroy_strategy = TARGET_BASED; break;
-//         case 1 : init_destroy_strategy = COLLISION_BASED; break;
-//         case 2 : init_destroy_strategy = RANDOM_BASED; break;
-//         default : cerr << "ERROR" << endl; exit(-1);
-//     }
-// }
+void InitLNS::chooseDestroyHeuristicbyALNS()
+{
+    rouletteWheel();
+    switch (selected_neighbor)
+    {
+        case 0 : init_destroy_strategy = TARGET_BASED; break;
+        case 1 : init_destroy_strategy = COLLISION_BASED; break;
+        case 2 : init_destroy_strategy = RANDOM_BASED; break;
+        default : cerr << "ERROR" << endl; exit(-1);
+    }
+}
 
-// bool InitLNS::generateNeighborByEarlyConflict()
-// {
-//     if (neighbor_size >= agents.size())
-//     {
-//         neighbor.agents.resize(agents.size());
-//         for (int i = 0; i < (int)agents.size(); i++)
-//             neighbor.agents[i] = i;
-//         return true;
-//     }
-
-//     unordered_set<int> neighbors_set;
-
-    //instead of picking a random agent to start with, we have starting point: earliest colliding pairs
-    // std::priority_queue<tuple<int,int,int>, vector<tuple<int,int,int>>, CollisionQueueCmp> colliding_pq;
-    // //we first need to select top n based on time, so use a pqueue to sort, and track the current largest to filter no need item
-    // int max_curr_time = -1;
-    // for (auto colliding: total_colliding_pairs)
-    // {
-    //     //we continue because current time > the existing max time and neighbor size already enough
-    //     if (std::get<2>(colliding) > max_curr_time && neighbors_set.size() >= neighbor_size) 
-    //         continue;
-    //     colliding_pq.push(colliding);
-    //     if (std::get<2>(colliding) > max_curr_time)
-    //         max_curr_time = std::get<2>(colliding);
-    // }
-    // while (neighbors_set.size() < neighbor_size && !colliding_pq.empty())
-    // {
-    //     auto curr = colliding_pq.top();
-    //     if(neighbors_set.size() == neighbor_size - 1)
-    //     {
-    //         if (rand() > 0.5)
-    //             neighbors_set.emplace(std::get<1>(curr));
-    //         else
-    //             neighbors_set.emplace(std::get<0>(curr));
-    //     }
-    //     else
-    //     {
-    //         neighbors_set.emplace(std::get<0>(curr));
-    //         neighbors_set.emplace(std::get<1>(curr));
-    //     }
-    //     colliding_pq.pop();
-    // }
-    // neighbor.agents.assign(neighbors_set.begin(), neighbors_set.end());
-//     if (screen >= 2)
-//         cout << "Generate " << neighbor.agents.size() << " neighbors by early conflict" << endl;
-//     return true;
-// }
 
 bool InitLNS::generateNeighborByEarlyCollisionGraph() //update by chossing the earliest
 {
@@ -1326,23 +1239,24 @@ bool InitLNS::generateNeighborByEarlyCollisionGraph() //update by chossing the e
     {
         neighbors_set.insert(v);
         int a = v;
-        //std::cout<<"first agent: "<<a<<std::endl;
-        //G.erase(v);
+        neighbors_set.insert(a);
         while ((int)neighbors_set.size() < neighbor_size)
         {
             // int a = *std::next(G.begin(), rand() % G.size());
             // neighbors_set.insert(a);
             //int a = *std::next(time_collision_graph[a].begin(), rand() % time_collision_graph[a].size());
-            int next_a = a;
-            while (neighbors_set.find(next_a) != neighbors_set.end())
-            {
-                next_a = (*std::next(time_collision_graph[a].begin(), rand() % time_collision_graph[a].size())).first;
-            }
-            a = next_a;
+            // int next_a = a;
+            // while (neighbors_set.find(next_a) != neighbors_set.end())
+            // {
+            //     std::cout<<"1 "<<next_a<<std::endl;
+            //     next_a = (*std::next(time_collision_graph[a].begin(), rand() % time_collision_graph[a].size())).first;
+            //     std::cout<<"2 "<<next_a<<std::endl;
+            // }
+            // a = next_a;
             //std::cout<<"next agent: "<<a<<" ";
+            a = (*std::next(time_collision_graph[a].begin(), rand() % time_collision_graph[a].size())).first;
             neighbors_set.insert(a);
         }
-        std::cout<<std::endl;
     }
     neighbor.agents.assign(neighbors_set.begin(), neighbors_set.end());
     if (screen >= 2)
@@ -1350,151 +1264,265 @@ bool InitLNS::generateNeighborByEarlyCollisionGraph() //update by chossing the e
     return true;
 }
 
-// bool InitLNS::generateNeighborByTarget()
-// {
-//     int a = -1;
-//     auto r = rand() % (num_of_colliding_pairs * 2);
-//     int sum = 0;
-//     for (int i = 0 ; i < (int)collision_graph.size(); i++)
-//     {
-//         sum += (int)collision_graph[i].size();
-//         if (r <= sum and !collision_graph[i].empty())
-//         {
-//             a = i;
-//             break;
-//         }
-//     }
-//     assert(a != -1 and !collision_graph[a].empty());
-//     set<pair<int,int>> A_start; // an ordered set of (time, id) pair.
-//     set<int> A_target;
+bool InitLNS::generateNeighborByEarlyTarget()
+{
+    // int a = -1;
+    // auto r = rand() % (num_of_colliding_pairs * 2);
+    // int sum = 0;
+    // for (int i = 0 ; i < (int)collision_graph.size(); i++)
+    // {
+    //     sum += (int)collision_graph[i].size();
+    //     if (r <= sum and !collision_graph[i].empty())
+    //     {
+    //         a = i;
+    //         break;
+    //     }
+    // }
+    // assert(a != -1 and !collision_graph[a].empty());
+    int a = rand()%2 < 1 ? std::get<1>(earlies_colliding_pairs) : std::get<2>(earlies_colliding_pairs);
+    set<pair<int,int>> A_start; // an ordered set of (time, id) pair.
+    set<int> A_target;
 
 
-//     for(int t = 0 ;t< path_table.table[agents[a].path_planner->start_location].size();t++){
-//         for(auto id : path_table.table[agents[a].path_planner->start_location][t]){
-//             if (id!=a)
-//                 A_start.insert(make_pair(t,id));
-//         }
-//     }
-
-
-
-//     agents[a].path_planner->findMinimumSetofColldingTargets(goal_table,A_target);// generate non-wait path and collect A_target
-
-
-//     if (screen >= 3){
-//         cout<<"     Selected a : "<< a<<endl;
-//         cout<<"     Select A_start: ";
-//         for(auto e: A_start)
-//             cout<<"("<<e.first<<","<<e.second<<"), ";
-//         cout<<endl;
-//         cout<<"     Select A_target: ";
-//         for(auto e: A_target)
-//             cout<<e<<", ";
-//         cout<<endl;
-//     }
-
-//     set<int> neighbors_set;
-
-//     neighbors_set.insert(a);
-
-//     if(A_start.size() + A_target.size() >= neighbor_size-1){
-//         if (A_start.empty()){
-//             vector<int> shuffled_agents;
-//             shuffled_agents.assign(A_target.begin(),A_target.end());
-//             std::random_shuffle(shuffled_agents.begin(), shuffled_agents.end());
-//             neighbors_set.insert(shuffled_agents.begin(), shuffled_agents.begin() + neighbor_size-1);
-//         }
-//         else if (A_target.size() >= neighbor_size){
-//             vector<int> shuffled_agents;
-//             shuffled_agents.assign(A_target.begin(),A_target.end());
-//             std::random_shuffle(shuffled_agents.begin(), shuffled_agents.end());
-//             neighbors_set.insert(shuffled_agents.begin(), shuffled_agents.begin() + neighbor_size-2);
-
-//             neighbors_set.insert(A_start.begin()->second);
-//         }
-//         else{
-//             neighbors_set.insert(A_target.begin(), A_target.end());
-//             for(auto e : A_start){
-//                 //A_start is ordered by time.
-//                 if (neighbors_set.size()>= neighbor_size)
-//                     break;
-//                 neighbors_set.insert(e.second);
-
-//             }
-//         }
-//     }
-//     else if (!A_start.empty() || !A_target.empty()){
-//         neighbors_set.insert(A_target.begin(), A_target.end());
-//         for(auto e : A_start){
-//             neighbors_set.insert(e.second);
-//         }
-
-//         set<int> tabu_set;
-//         while(neighbors_set.size()<neighbor_size){
-//             int rand_int = rand() % neighbors_set.size();
-//             auto it = neighbors_set.begin();
-//             std::advance(it, rand_int);
-//             a = *it;
-//             tabu_set.insert(a);
-
-//             if(tabu_set.size() == neighbors_set.size())
-//                 break;
-
-//             vector<int> targets;
-//             for(auto p: agents[a].path){
-//                 if(goal_table[p.location]>-1){
-//                     targets.push_back(goal_table[p.location]);
-//                 }
-//             }
-
-//             if(targets.empty())
-//                 continue;
-//             rand_int = rand() %targets.size();
-//             neighbors_set.insert(*(targets.begin()+rand_int));
-//         }
-//     }
+    for(int t = 0 ;t< path_table.table[agents[a].path_planner->start_location].size();t++){
+        for(auto id : path_table.table[agents[a].path_planner->start_location][t]){
+            if (id!=a)
+                A_start.insert(make_pair(t,id));
+        }
+    }
 
 
 
-//     neighbor.agents.assign(neighbors_set.begin(), neighbors_set.end());
-//     if (screen >= 2)
-//         cout << "Generate " << neighbor.agents.size() << " neighbors by target" << endl;
-//     return true;
-// }
-// bool InitLNS::generateNeighborRandomly()
-// {
-//     if (neighbor_size >= agents.size())
-//     {
-//         neighbor.agents.resize(agents.size());
-//         for (int i = 0; i < (int)agents.size(); i++)
-//             neighbor.agents[i] = i;
-//         return true;
-//     }
-//     set<int> neighbors_set;
-//     auto total = num_of_colliding_pairs * 2 + agents.size();
-//     while(neighbors_set.size() < neighbor_size)
-//     {
-//         vector<int> r(neighbor_size - neighbors_set.size());
-//         for (auto i = 0; i < neighbor_size - neighbors_set.size(); i++)
-//             r[i] = rand() % total;
-//         std::sort(r.begin(), r.end());
-//         int sum = 0;
-//         for (int i = 0, j = 0; i < agents.size() and j < r.size(); i++)
-//         {
-//             sum += (int)collision_graph[i].size() + 1;
-//             if (sum >= r[j])
-//             {
-//                 neighbors_set.insert(i);
-//                 while (j < r.size() and sum >= r[j])
-//                     j++;
-//             }
-//         }
-//     }
-//     neighbor.agents.assign(neighbors_set.begin(), neighbors_set.end());
-//     if (screen >= 2)
-//         cout << "Generate " << neighbor.agents.size() << " neighbors randomly" << endl;
-//     return true;
-// }
+    agents[a].path_planner->findMinimumSetofColldingTargets(goal_table,A_target);// generate non-wait path and collect A_target
+
+
+    if (screen >= 3){
+        cout<<"     Selected a : "<< a<<endl;
+        cout<<"     Select A_start: ";
+        for(auto e: A_start)
+            cout<<"("<<e.first<<","<<e.second<<"), ";
+        cout<<endl;
+        cout<<"     Select A_target: ";
+        for(auto e: A_target)
+            cout<<e<<", ";
+        cout<<endl;
+    }
+
+    set<int> neighbors_set;
+
+    neighbors_set.insert(a);
+
+    if(A_start.size() + A_target.size() >= neighbor_size-1){
+        if (A_start.empty()){
+            vector<int> shuffled_agents;
+            shuffled_agents.assign(A_target.begin(),A_target.end());
+            std::random_shuffle(shuffled_agents.begin(), shuffled_agents.end());
+            neighbors_set.insert(shuffled_agents.begin(), shuffled_agents.begin() + neighbor_size-1);
+        }
+        else if (A_target.size() >= neighbor_size){
+            vector<int> shuffled_agents;
+            shuffled_agents.assign(A_target.begin(),A_target.end());
+            std::random_shuffle(shuffled_agents.begin(), shuffled_agents.end());
+            neighbors_set.insert(shuffled_agents.begin(), shuffled_agents.begin() + neighbor_size-2);
+
+            neighbors_set.insert(A_start.begin()->second);
+        }
+        else{
+            neighbors_set.insert(A_target.begin(), A_target.end());
+            for(auto e : A_start){
+                //A_start is ordered by time.
+                if (neighbors_set.size()>= neighbor_size)
+                    break;
+                neighbors_set.insert(e.second);
+
+            }
+        }
+    }
+    else if (!A_start.empty() || !A_target.empty()){
+        neighbors_set.insert(A_target.begin(), A_target.end());
+        for(auto e : A_start){
+            neighbors_set.insert(e.second);
+        }
+
+        set<int> tabu_set;
+        while(neighbors_set.size()<neighbor_size){
+            int rand_int = rand() % neighbors_set.size();
+            auto it = neighbors_set.begin();
+            std::advance(it, rand_int);
+            a = *it;
+            tabu_set.insert(a);
+
+            if(tabu_set.size() == neighbors_set.size())
+                break;
+
+            vector<int> targets;
+            for(auto p: agents[a].path){
+                if(goal_table[p.location]>-1){
+                    targets.push_back(goal_table[p.location]);
+                }
+            }
+
+            if(targets.empty())
+                continue;
+            rand_int = rand() %targets.size();
+            neighbors_set.insert(*(targets.begin()+rand_int));
+        }
+    }
+
+
+
+    neighbor.agents.assign(neighbors_set.begin(), neighbors_set.end());
+    if (screen >= 2)
+        cout << "Generate " << neighbor.agents.size() << " neighbors by target" << endl;
+    return true;
+}
+
+bool InitLNS::generateNeighborByTarget()
+{
+    int a = -1;
+    auto r = rand() % (num_of_colliding_pairs * 2);
+    int sum = 0;
+    for (int i = 0 ; i < (int)time_collision_graph.size(); i++)
+    {
+        sum += (int)time_collision_graph[i].size();
+        if (r <= sum and !time_collision_graph[i].empty())
+        {
+            a = i;
+            break;
+        }
+    }
+    assert(a != -1 and !time_collision_graph[a].empty());
+    set<pair<int,int>> A_start; // an ordered set of (time, id) pair.
+    set<int> A_target;
+
+
+    for(int t = 0 ;t< path_table.table[agents[a].path_planner->start_location].size();t++){
+        for(auto id : path_table.table[agents[a].path_planner->start_location][t]){
+            if (id!=a)
+                A_start.insert(make_pair(t,id));
+        }
+    }
+
+
+
+    agents[a].path_planner->findMinimumSetofColldingTargets(goal_table,A_target);// generate non-wait path and collect A_target
+
+
+    if (screen >= 3){
+        cout<<"     Selected a : "<< a<<endl;
+        cout<<"     Select A_start: ";
+        for(auto e: A_start)
+            cout<<"("<<e.first<<","<<e.second<<"), ";
+        cout<<endl;
+        cout<<"     Select A_target: ";
+        for(auto e: A_target)
+            cout<<e<<", ";
+        cout<<endl;
+    }
+
+    set<int> neighbors_set;
+
+    neighbors_set.insert(a);
+
+    if(A_start.size() + A_target.size() >= neighbor_size-1){
+        if (A_start.empty()){
+            vector<int> shuffled_agents;
+            shuffled_agents.assign(A_target.begin(),A_target.end());
+            std::random_shuffle(shuffled_agents.begin(), shuffled_agents.end());
+            neighbors_set.insert(shuffled_agents.begin(), shuffled_agents.begin() + neighbor_size-1);
+        }
+        else if (A_target.size() >= neighbor_size){
+            vector<int> shuffled_agents;
+            shuffled_agents.assign(A_target.begin(),A_target.end());
+            std::random_shuffle(shuffled_agents.begin(), shuffled_agents.end());
+            neighbors_set.insert(shuffled_agents.begin(), shuffled_agents.begin() + neighbor_size-2);
+
+            neighbors_set.insert(A_start.begin()->second);
+        }
+        else{
+            neighbors_set.insert(A_target.begin(), A_target.end());
+            for(auto e : A_start){
+                //A_start is ordered by time.
+                if (neighbors_set.size()>= neighbor_size)
+                    break;
+                neighbors_set.insert(e.second);
+
+            }
+        }
+    }
+    else if (!A_start.empty() || !A_target.empty()){
+        neighbors_set.insert(A_target.begin(), A_target.end());
+        for(auto e : A_start){
+            neighbors_set.insert(e.second);
+        }
+
+        set<int> tabu_set;
+        while(neighbors_set.size()<neighbor_size){
+            int rand_int = rand() % neighbors_set.size();
+            auto it = neighbors_set.begin();
+            std::advance(it, rand_int);
+            a = *it;
+            tabu_set.insert(a);
+
+            if(tabu_set.size() == neighbors_set.size())
+                break;
+
+            vector<int> targets;
+            for(auto p: agents[a].path){
+                if(goal_table[p.location]>-1){
+                    targets.push_back(goal_table[p.location]);
+                }
+            }
+
+            if(targets.empty())
+                continue;
+            rand_int = rand() %targets.size();
+            neighbors_set.insert(*(targets.begin()+rand_int));
+        }
+    }
+
+
+
+    neighbor.agents.assign(neighbors_set.begin(), neighbors_set.end());
+    if (screen >= 2)
+        cout << "Generate " << neighbor.agents.size() << " neighbors by target" << endl;
+    return true;
+}
+
+bool InitLNS::generateNeighborRandomly()
+{
+    if (neighbor_size >= agents.size())
+    {
+        neighbor.agents.resize(agents.size());
+        for (int i = 0; i < (int)agents.size(); i++)
+            neighbor.agents[i] = i;
+        return true;
+    }
+    set<int> neighbors_set;
+    auto total = num_of_colliding_pairs * 2 + agents.size();
+    while(neighbors_set.size() < neighbor_size)
+    {
+        vector<int> r(neighbor_size - neighbors_set.size());
+        for (auto i = 0; i < neighbor_size - neighbors_set.size(); i++)
+            r[i] = rand() % total;
+        std::sort(r.begin(), r.end());
+        int sum = 0;
+        for (int i = 0, j = 0; i < agents.size() and j < r.size(); i++)
+        {
+            sum += (int)time_collision_graph[i].size() + 1;
+            if (sum >= r[j])
+            {
+                neighbors_set.insert(i);
+                while (j < r.size() and sum >= r[j])
+                    j++;
+            }
+        }
+    }
+    neighbor.agents.assign(neighbors_set.begin(), neighbors_set.end());
+    if (screen >= 2)
+        cout << "Generate " << neighbor.agents.size() << " neighbors randomly" << endl;
+    return true;
+}
 
 // Random walk; return the first agent that the agent collides with
 int InitLNS::randomWalk(int agent_id)
