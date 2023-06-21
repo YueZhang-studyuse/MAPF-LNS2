@@ -162,7 +162,7 @@ bool LNS::runLns2(bool has_initial, bool &conflict_in_window)
     }
     initial_solution_runtime = ((fsec)(Time::now() - start_time)).count();
     lns2_solutin_conflicts = init_lns->num_of_colliding_pairs;
-    init_lns->printPath();
+    //init_lns->printPath();
     conflict_in_window = (init_lns->num_conflicts_windowed.find(1) != init_lns->num_conflicts_windowed.end() && init_lns->num_conflicts_windowed[1] != 0);
     return succ;
 }

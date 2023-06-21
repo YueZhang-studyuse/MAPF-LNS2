@@ -624,12 +624,12 @@ bool InitLNS::runTimePP()
         {
             if (neighbor.colliding_pairs_windowed.size() > neighbor.old_colliding_pairs_windowed.size())
                 break;
-            if (neighbor.colliding_pairs_windowed.size() == neighbor.old_colliding_pairs_windowed.size() && neighbor.colliding_pairs.size() >= neighbor.old_colliding_pairs.size())
+            if (neighbor.colliding_pairs_windowed.size() == neighbor.old_colliding_pairs_windowed.size() && neighbor.colliding_pairs.size() > neighbor.old_colliding_pairs.size())
                 break;
         }
         else
         {
-            if (neighbor.colliding_pairs.size() >= neighbor.old_colliding_pairs.size())
+            if (neighbor.colliding_pairs.size() > neighbor.old_colliding_pairs.size())
                 break;
         }
         path_table.insertPath(agents[id].id, agents[id].path);
@@ -637,7 +637,7 @@ bool InitLNS::runTimePP()
     }
     if (accept_ontime)
     {
-        if (p == shuffled_agents.end() && neighbor.colliding_pairs_windowed.size() < neighbor.old_colliding_pairs_windowed.size()) // accept new paths
+        if (p == shuffled_agents.end() && neighbor.colliding_pairs_windowed.size() <= neighbor.old_colliding_pairs_windowed.size()) // accept new paths
         {
             return true;
         }
@@ -843,32 +843,41 @@ bool InitLNS::postProcessWait()
 {
     int t = std::get<0>(earlies_colliding_pairs);
     std::cout<<"add wait: "<< commit_window-t+1<<std::endl;
+    vector<int> temp;
     for (int i = 0; i < agents.size(); i++)
     {
-        vector<PathEntry> temp;
-        temp.resize(agents[i].path.size()+commit_window-t+1);
+        if (agents[i].path.size() <= t)
+            continue;
+        int size = agents[i].path.size()+commit_window-t+1;
+        temp.clear();
+        temp.resize(size);
         for (int time = 0; time < t; time++)
         {
-            temp[time].location = agents[i].path[time].location;
+            temp[time] = agents[i].path[time].location;
         }
-        for (int time = t; time <= commit_window;time++)
+        for (int time = 0; time < commit_window; time++)
         {
-            temp[time].location = agents[i].path[t-1].location;
+            temp[time+t] = agents[i].path[t-1].location;
         }
-        for (int time = commit_window+1; time <= agents[i].path.size()+commit_window-t+1;time++)
+        int t1 = t;
+        for (int time = commit_window+1; time < agents[i].path.size()+commit_window-t+1;time++)
         {
-            temp[time].location = agents[i].path[t].location;
-            t++;
+            temp[time] = agents[i].path[t1].location;
+            t1++;
         }
+        agents[i].path.clear();
         agents[i].path.resize(temp.size());
-        agents[i].path = temp;
+        for (int a = 0; a < temp.size(); a++)
+        {
+            agents[i].path[a].location = temp[a];
+        }
     }
     return true;
 }
 
 bool InitLNS::postProcessMCP()
 {
-    
+
 }
 
 // bool InitLNS::getInitialSolutionBySPC() //solely by individual shortest path
@@ -1087,8 +1096,8 @@ bool InitLNS::updateCollidingPairs(set<pair<int, int>>& colliding_pairs, int age
 bool InitLNS::updateCollidingPairsByTime(unordered_map<pair<int,int>,int> & colliding_pairs, unordered_map<pair<int,int>,int> & windowed_colliding_pairs, int agent_id, const Path& path) const
 {
     bool succ = false;
-    if (path.size() < 2)
-        return succ;
+    // if (path.size() < 2)
+    //     return succ;
     for (int t = 1; t < (int)path.size(); t++)
     {
         int from = path[t - 1].location;
