@@ -35,8 +35,10 @@ public:
     //add more stats
     map<int,int> num_conflicts_windowed;
 
-    bool time_aware = false;
-    bool accept_ontime = false;
+    bool time_aware = true;
+    bool accept_ontime = true;
+
+    bool postProcessWait();
     
 
 

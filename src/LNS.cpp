@@ -131,19 +131,19 @@ bool LNS::runLns2(bool has_initial, bool &conflict_in_window)
     }
     // if we have a initial solution, but has conflicts in window
     // 1. start from pibt+single agent shorest path
-    else if (conflict_in_window)
-    {
-        succ = runCommitInitPIBT();
-        if (succ)
-        {
-            //attach single agent shorest path to it
-        }
-        else
-        {
-            std::cout<<"initial 2 pibt failed"<<std::endl;
-            exit(-1);
-        }
-    }
+    // else if (conflict_in_window)
+    // {
+    //     succ = runCommitInitPIBT();
+    //     if (succ)
+    //     {
+    //         //attach single agent shorest path to it
+    //     }
+    //     else
+    //     {
+    //         std::cout<<"initial 2 pibt failed"<<std::endl;
+    //         exit(-1);
+    //     }
+    // }
     //then no conflict in window, we just use lns2, we also need to update confliding pairs in lns2 with our old path
             //init_lns->check_initial = !initial_solution_feasible;
     succ = init_lns->run();

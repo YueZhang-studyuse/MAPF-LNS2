@@ -48,6 +48,8 @@ bool PIBT::solve() {
   int step = 0;
 
   while (!P->isSolved()) {
+    if(step == max_timestep)
+        break;
     allocate();
     update();
     P->update();
@@ -55,8 +57,6 @@ bool PIBT::solve() {
           break;
       }
       step++;
-      if(step == max_timestep)
-        break;
   }
 
   solveEnd();
