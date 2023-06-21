@@ -866,6 +866,11 @@ bool InitLNS::postProcessWait()
     return true;
 }
 
+bool InitLNS::postProcessMCP()
+{
+    
+}
+
 // bool InitLNS::getInitialSolutionBySPC() //solely by individual shortest path
 // {
 //     neighbor.agents.clear();
