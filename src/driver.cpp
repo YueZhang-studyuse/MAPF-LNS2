@@ -359,12 +359,6 @@ int main(int argc, char** argv)
                     lns.setRuntimeLimit(step_time*commit_step);
                     lns.setIterations(max_iterations);
                 }
-                if (conflict_in_window)
-                {
-                    lns.clearAll(vm["destoryStrategy"].as<string>());
-                    lns.setRuntimeLimit(step_time*commit_step);
-                    lns.setIterations(max_iterations);
-                }
                 //run lns to get next commit
                 succ = lns.runLns2(!initial_run,conflict_in_window); 
                 // lns.validateSolution();

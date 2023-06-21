@@ -270,6 +270,7 @@ bool InitLNS::run()
             }
         }
     }
+    printCollisionGraph();
     cout<<"winodw conflicts break up"<<endl;
     for (auto numbers: num_conflicts_windowed)
     {
@@ -279,8 +280,11 @@ bool InitLNS::run()
 
     if (commit_window == -1)
         return (num_of_colliding_pairs == 0);
-    return (num_of_colliding_pairs_windowed == 0);
+    if (num_of_colliding_pairs_windowed == 0)
+        return true;
+    return (postProcessWait());
 }
+
 
 bool InitLNS::runForCommit()
 {
@@ -585,6 +589,7 @@ bool InitLNS::runTimePP()
     auto p = shuffled_agents.begin();
     neighbor.sum_of_costs = 0;
     neighbor.colliding_pairs.clear();
+    neighbor.colliding_pairs_windowed.clear();
 
     runtime = ((fsec)(Time::now() - start_time)).count();
     double T = min(time_limit - runtime, replan_time_limit);
@@ -610,7 +615,7 @@ bool InitLNS::runTimePP()
         {
             runtime = ((fsec)(Time::now() - start_time)).count();
             cout << "After agent " << id << ": Remaining agents = " << remaining_agents <<
-                 ", colliding pairs = " << neighbor.colliding_pairs.size() + neighbor.colliding_pairs_windowed.size() <<
+                 ", colliding pairs = " << neighbor.colliding_pairs.size() <<
                  ", windowed colliding pairs = " << neighbor.colliding_pairs_windowed.size() <<
                  ", LL nodes = " << agents[id].path_planner->getNumExpanded() <<
                  ", remaining time = " << time_limit - runtime << " seconds. " << endl;
@@ -624,9 +629,7 @@ bool InitLNS::runTimePP()
         }
         else
         {
-            if (neighbor.colliding_pairs_windowed.size() > neighbor.old_colliding_pairs_windowed.size())
-                break;
-            if (neighbor.colliding_pairs_windowed.size() == neighbor.old_colliding_pairs_windowed.size() && neighbor.colliding_pairs.size() >= neighbor.old_colliding_pairs.size())
+            if (neighbor.colliding_pairs.size() >= neighbor.old_colliding_pairs.size())
                 break;
         }
         path_table.insertPath(agents[id].id, agents[id].path);
@@ -834,6 +837,33 @@ bool InitLNS::attachInitialSolutionBySPC()
         printCollisionGraph();
     
     return remaining_agents == 0;
+}
+
+bool InitLNS::postProcessWait()
+{
+    int t = std::get<0>(earlies_colliding_pairs);
+    std::cout<<"add wait: "<< commit_window-t+1<<std::endl;
+    for (int i = 0; i < agents.size(); i++)
+    {
+        vector<PathEntry> temp;
+        temp.resize(agents[i].path.size()+commit_window-t+1);
+        for (int time = 0; time < t; time++)
+        {
+            temp[time].location = agents[i].path[time].location;
+        }
+        for (int time = t; time <= commit_window;time++)
+        {
+            temp[time].location = agents[i].path[t-1].location;
+        }
+        for (int time = commit_window+1; time <= agents[i].path.size()+commit_window-t+1;time++)
+        {
+            temp[time].location = agents[i].path[t].location;
+            t++;
+        }
+        agents[i].path.resize(temp.size());
+        agents[i].path = temp;
+    }
+    return true;
 }
 
 // bool InitLNS::getInitialSolutionBySPC() //solely by individual shortest path
@@ -1631,7 +1661,7 @@ void InitLNS::printCollisionGraph() const
         {
             int j = collision.first;
             int t = collision.second;
-            if (i < j)
+            if (i < j && t <= commit_window)
             {
                 cout << "(" << i << "," << j <<",t:"<< t << "),";
                 edges++;
