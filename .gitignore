@@ -4,3 +4,5 @@ bin
 cmake*
 exp*
 debug
+.history
+build
