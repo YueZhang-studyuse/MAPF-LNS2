@@ -1,7 +1,7 @@
 #include "MCP.h"
 
 
-void MCP::simulate(vector<Path*>& paths, int max_timestep)
+void MCP::simulate(vector<Path*>& paths)
 {
     vector<Path> path_copy; 
     path_copy.resize(paths.size());
@@ -19,7 +19,7 @@ void MCP::simulate(vector<Path*>& paths, int max_timestep)
         }
     }
     
-    for (int t = 0; t < max_timestep && !unfinished_agents.empty(); t++) {
+    for (int t = 0; t <= window_size+1 && !unfinished_agents.empty(); t++) {
         auto old_size = unfinished_agents.size();
         for (auto p = unfinished_agents.begin(); p != unfinished_agents.end();) {
 
@@ -28,6 +28,14 @@ void MCP::simulate(vector<Path*>& paths, int max_timestep)
         
     }
 
+    for (int i = 0; i < paths.size(); i++)
+    {
+        if (copy_agent_time[i] != (int) no_wait_time[i].size()){
+            path_copy[i].insert(path_copy[i].end()
+            , std::next(paths[i]->begin(),no_wait_time[i][copy_agent_time[i]]), paths[i]->end());
+        }
+        *(paths[i]) = path_copy[i];
+    }
 }
 
 bool MCP::moveAgent(vector<Path>& paths_copy, vector<Path*>& paths, list<int>::iterator& p, int t)
@@ -62,6 +70,12 @@ bool MCP::moveAgent(vector<Path>& paths_copy, vector<Path*>& paths, list<int>::i
     // check mcp to determine whether the agent should move or wait
     int loc = paths[i]->at(no_wait_time[i][copy_agent_time[i]]).location;
     assert(!copy_mcp[loc].empty());
+
+    if (t < delay_for[i]){
+        ++p;
+        return false;
+    }
+
     if (copy_mcp[loc].front().count(i)>0)
     {
         paths_copy[i].push_back(paths[i]->at(no_wait_time[i][copy_agent_time[i]])); // move
@@ -163,6 +177,7 @@ void MCP::build(vector<Path*>& paths)
 
     // Push nodes to MCP
     no_wait_time.resize(paths.size());
+    delay_for.resize(paths.size(), 0);
     for (size_t t = 0; t < max_timestep; t++)
     {
         unordered_map<int, set<int>> t_occupy;
@@ -178,6 +193,11 @@ void MCP::build(vector<Path*>& paths)
         }
         for(auto& o : t_occupy){
             mcp[o.first].push_back(o.second);
+            if (o.second.size() > 1 && t <= window_size)
+                for (auto a : o.second){
+                    if (window_size+1 - t > delay_for[a])
+                        delay_for[a] = window_size+1 - t;
+                }
         }
     }
 
