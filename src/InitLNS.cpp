@@ -3,6 +3,7 @@
 #include <algorithm>
 #include "GCBS.h"
 #include "PBS.h"
+#include "MCP.h"
 
 InitLNS::InitLNS(const Instance& instance, vector<Agent>& agents, double time_limit,
          const string & replan_algo_name, const string & init_destory_name, int neighbor_size, int screen) :
@@ -282,7 +283,8 @@ bool InitLNS::run()
         return (num_of_colliding_pairs == 0);
     if (num_of_colliding_pairs_windowed == 0)
         return true;
-    return (postProcessWait());
+    //return (postProcessWait());
+    return (postProcessMCP());
 }
 
 
@@ -877,7 +879,30 @@ bool InitLNS::postProcessWait()
 
 bool InitLNS::postProcessMCP()
 {
-
+    MCP postmcp(instance,commit_window);
+    {
+        vector<Path*> temp;
+        temp.resize(agents.size());
+        for (int a = 0; a < agents.size(); a++)
+        {
+            temp[a] = &(agents[a].path);
+        }
+        postmcp.build(temp);
+        postmcp.simulate(temp);
+        // for (int a = 0; a < agents.size(); a++)
+        // {
+        //     agents[a].path.clear();
+        //     agents[a].path.resize(temp[a]->size());
+        //     for (int i = 0; i < temp[a]->size(); i++)
+        //     {
+        //         auto path = temp[a]; //a path for one agent, vector<PathEntry>
+        //         agents[a].path[i].location = path[i].location;
+        //     }
+        // }
+        //temp.clear();
+    }
+    postmcp.clear();
+    return true;
 }
 
 // bool InitLNS::getInitialSolutionBySPC() //solely by individual shortest path
