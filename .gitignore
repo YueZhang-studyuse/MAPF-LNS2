@@ -4,6 +4,7 @@ bin
 cmake*
 exp*
 debug
+<<<<<<< HEAD
 commit-instance
 commit-results
 commit-results-old
@@ -12,3 +13,7 @@ plots
 single_agent_path
 run_experiments.py
 test.py
+=======
+.history
+build
+>>>>>>> origin/dev-mcp
