@@ -70,6 +70,7 @@ bool MCP::moveAgent(vector<Path>& paths_copy, vector<Path*>& paths, list<int>::i
             // if (copy_mcp[loc].front().empty())
             //     copy_mcp[loc].pop_front();
             // p = unfinished_agents.erase(p);
+            paths_copy[i].push_back(paths_copy[i].back());
             ++p;
             return false;
         }
