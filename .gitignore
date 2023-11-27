@@ -1,6 +1,6 @@
-.idea
-analysis
-bin
-cmake*
-exp*
-debug
+test.txt
+run_experiments.py
+run_lnsexperiments.py
+run_lnsonly.py
+results
+CMakeFiles

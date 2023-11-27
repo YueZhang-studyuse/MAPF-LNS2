@@ -218,7 +218,7 @@ int main(int argc, char** argv)
 
                     //try add commit anyway
                     commit_step++;
-                    last_improve_pers = (lns.initial_sum_of_costs - lns.sum_of_costs)/lns.(runtime-initial_solution_runtime);
+                    last_improve_pers = (lns.initial_sum_of_costs - lns.sum_of_costs)/(lns.runtime-lns.initial_solution_runtime);
 
                     lns.commitPath(commit_step,commited_paths,future_paths,false,total_step);
                     solution_costs.emplace_back(lns.sum_of_costs + instance.getDefaultNumberOfAgents()*wait);
@@ -281,14 +281,34 @@ int main(int argc, char** argv)
                     //need more time to commit
                     commit_step++;
                 }
-                // else
-                // {
-                //     //dynamic commit
-                //     //first get improve per sec last time
-                //     //then improve per sec this time
-                //     double this_improve_pers = (lns.initial_sum_of_costs - lns.sum_of_costs)/lns.(runtime-initial_solution_runtime);
-                    
-                // }
+                else
+                {
+                    //dynamic commit
+                    //first get improve per sec last time
+                    //then improve per sec this time
+                    if (last_improve_pers != -1)
+                    {
+                        double this_improve_pers = (lns.initial_sum_of_costs - lns.sum_of_costs)/(lns.runtime-lns.initial_solution_runtime);
+                        if (this_improve_pers < last_improve_pers)
+                        {
+                            commit_step--;
+                        }
+                        else
+                        {
+                            commit_step++;
+                        }
+                        if (commit_step < 1)
+                        {
+                            commit_step = 1;
+                        }
+                        last_improve_pers = this_improve_pers;
+                    }
+                    else
+                    {
+                        commit_step++;
+                        last_improve_pers = (lns.initial_sum_of_costs - lns.sum_of_costs)/(lns.runtime-lns.initial_solution_runtime);
+                    }
+                }
 
                     // double success = lns.iteration_stats.size();
                     // if (success > 1)
