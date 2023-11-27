@@ -28,6 +28,7 @@ int main(int argc, char** argv)
 		("screen,s", po::value<int>()->default_value(0),
 		        "screen option (0: none; 1: LNS results; 2:LNS detailed results; 3: MAPF detailed results)")
         ("commitStep,c", po::value<int>()->default_value(1), "steps per commit")
+        ("wait", po::value<int>()->default_value(0), "wait time")
 
 		("stats", po::value<string>(), "output stats file")
 
@@ -136,7 +137,10 @@ int main(int argc, char** argv)
     {
         double initial_time = 300;
         double step_time = 1;
-        double commit_step = vm["commitStep"].as<int>();
+        int commit_step = vm["commitStep"].as<int>();
+
+        int wait = vm["wait"].as<int>();
+
         int max_iterations = MAX_TIMESTEP;
         //note here I put future path start = commited path (I assume start at timestep 0?)
         vector<list<int>> commited_paths;
@@ -145,14 +149,22 @@ int main(int argc, char** argv)
         future_paths.resize(instance.getDefaultNumberOfAgents());
         bool commited_done = false;
         bool initial_run = true;
+        bool initial_succ = false;
         double total_step = 0;
         list<int> solution_costs;
+        list<int> iterations;
+        list<int> success_iterations;
+        list<int> ll_searchs;
+        list<double> ll_times;
+
+        double last_improve_pers = -1;
+
         LNS lns(instance, initial_time,
                 vm["initAlgo"].as<string>(),
                 vm["replanAlgo"].as<string>(),
                 vm["destoryStrategy"].as<string>(),
                 vm["neighborSize"].as<int>(),
-                0,
+                MAX_TIMESTEP,
                 vm["initLNS"].as<bool>(),
                 vm["initDestoryStrategy"].as<string>(),
                 vm["sipp"].as<bool>(),
@@ -160,6 +172,7 @@ int main(int argc, char** argv)
                 screen, pipp_option);
         while(!commited_done)
         {
+
             //update start locations
             //for (auto path: commited_paths)
             for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
@@ -176,109 +189,168 @@ int main(int argc, char** argv)
             if (initial_run)
             {
                 //run lns to get next commit
+                //lns.setIterations(0);
+                //lns.setRuntimeLimit(step_time + wait);
+                lns.setRuntimeLimit(1+wait); //set initial run to step time as default
+                lns.setRuntimeLimit(20);
                 succ = lns.run();
                 if (succ)
                 {
                     lns.validateSolution();
+
+                    // double success = lns.iteration_stats.size();
+                    // if (success > 1)
+                    // {
+                    //     auto iter_per_s = (success/commit_step)/(lns.runtime - lns.initial_solution_runtime);
+                    //     commit_step = 1;
+                    //     //test
+                    //     double avg_path = lns.sum_of_costs/(double)instance.getDefaultNumberOfAgents();
+                    //     double esti_search = iter_per_s*8*commit_step/(1-commit_step/avg_path);
+                    //     while (esti_search > 0 && esti_search <instance.getDefaultNumberOfAgents())
+                    //     {
+                    //         //cout<<esti_search<<endl;
+                    //         commit_step++;
+                    //         esti_search = iter_per_s*8*commit_step/(1-commit_step/avg_path);
+                    //     }
+                    //     //ceil(((double)instance.getDefaultNumberOfAgents()/8)/success);
+                    // }
+                    // cout<<commit_step<<" "<<success<<endl;
+
+                    //try add commit anyway
+                    commit_step++;
+                    last_improve_pers = (lns.initial_sum_of_costs - lns.sum_of_costs)/lns.(runtime-initial_solution_runtime);
+
                     lns.commitPath(commit_step,commited_paths,future_paths,false,total_step);
-                    solution_costs.emplace_back(lns.sum_of_costs);
+                    solution_costs.emplace_back(lns.sum_of_costs + instance.getDefaultNumberOfAgents()*wait);
+                    iterations.emplace_back(lns.iteration_stats.size());
+                    success_iterations.emplace_back(lns.iteration_stats.size() - lns.num_of_failures);
+                    ll_searchs.emplace_back(lns.num_ll_search);
+                    ll_times.emplace_back(lns.sum_ll_time);
                     total_step+=commit_step;
                     std::cout<<"Preprocessing time: "<<lns.preprocessing_time<<std::endl;
+                    initial_succ = true;
                 }
                 else
                 {
-                    cerr << "Initialise solution failed" << endl;
-                    exit(-1);
+                    initial_succ = false;
+                    cout<<"not success"<<endl;
+                    //if failed, commit++
+                    commit_step++;
+
+                    lns.commitPath(commit_step,commited_paths,future_paths,false,total_step);
+                    solution_costs.emplace_back(lns.sum_of_costs + instance.getDefaultNumberOfAgents()*wait);
+                    iterations.emplace_back(lns.iteration_stats.size());
+                    success_iterations.emplace_back(lns.iteration_stats.size() - lns.num_of_failures);
+                    ll_searchs.emplace_back(lns.num_ll_search);
+                    ll_times.emplace_back(lns.sum_ll_time);
+                    total_step+=commit_step;
+                    std::cout<<"Preprocessing time: "<<lns.preprocessing_time<<std::endl;
                 }
                 lns.writePathsToFile("InitialPath.txt");
                 initial_run = false;
             }
             else
             {
-                // LNS lns(instance, step_time*commit_step,
-                // vm["initAlgo"].as<string>(),
-                // vm["replanAlgo"].as<string>(),
-                // vm["destoryStrategy"].as<string>(),
-                // vm["neighborSize"].as<int>(),
-                // max_iterations,
-                // vm["initLNS"].as<bool>(),
-                // vm["initDestoryStrategy"].as<string>(),
-                // vm["sipp"].as<bool>(),
-                // vm["truncatePaths"].as<bool>(),
-                // screen, pipp_option);
                 lns.clearAll(vm["destoryStrategy"].as<string>());
                 lns.setIterations(max_iterations);
                 lns.setRuntimeLimit(step_time*commit_step);
                 
-                //load initial path
-                if (!lns.loadPaths(future_paths))
+                if (initial_succ)
                 {
-                    cerr << "The input path wrong" << endl;
-                    exit(-1);
+                    //load initial path
+                    if (!lns.loadPaths(future_paths))
+                    {
+                        cerr << "The input path wrong" << endl;
+                        exit(-1);
+                    }
+                }
+                else
+                {
+                    lns.has_initial_solution = false;
                 }
                 succ = lns.run();
+                initial_succ = succ;
                 if (succ)
                 {
                     lns.validateSolution();
-                    future_paths.clear();
-                    future_paths.resize(instance.getDefaultNumberOfAgents());
+                }
+                future_paths.clear();
+                future_paths.resize(instance.getDefaultNumberOfAgents());
+                if (!initial_succ)
+                {
+                    //need more time to commit
+                    commit_step++;
+                }
+                // else
+                // {
+                //     //dynamic commit
+                //     //first get improve per sec last time
+                //     //then improve per sec this time
+                //     double this_improve_pers = (lns.initial_sum_of_costs - lns.sum_of_costs)/lns.(runtime-initial_solution_runtime);
+                    
+                // }
+
+                    // double success = lns.iteration_stats.size();
+                    // if (success > 1)
+                    // {
+                        
+                    //     auto iter_per_s = success/commit_step;
+                    //     commit_step = 1;
+                    //     //test
+                    //     double avg_path = lns.sum_of_costs/(double)instance.getDefaultNumberOfAgents();
+                    //     double esti_search = iter_per_s*8*commit_step/(1-commit_step/avg_path);
+                    //     while (esti_search > 0 && esti_search <instance.getDefaultNumberOfAgents())
+                    //     {
+                    //         commit_step++;
+                    //         esti_search = iter_per_s*8*commit_step/(1-commit_step/avg_path);
+                    //     }
+                    //     //ceil(((double)instance.getDefaultNumberOfAgents()/8)/success);
+                    // }
+                    // cout<<commit_step<<" "<<success<<endl;
+
                     lns.commitPath(commit_step,commited_paths,future_paths,true,total_step);
                     int sic = 0;
                     for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
                     {
                         auto path = commited_paths[i];
                         sic+= path.size()-1;
-                        if (path.back() == instance.getGoals()[i])
+                        if (path.back() == instance.getGoals()[i] && future_paths[i].size() == 1)
                         {
-                            bool first = true;
+                            //bool first = true;
                             for (auto it = path.rbegin(); it != path.rend();++it)
                             {
-                                if (first)
-                                {
-                                    first = false;
-                                    continue;
-                                }
+                                // if (first)
+                                // {
+                                //     first = false;
+                                //     continue;
+                                // }
                                 if (*it == instance.getGoals()[i])
                                 {
                                     sic--;
                                 }
+                                else
+                                {
+                                    break;
+                                }
                             }
+                            sic++;
                         }
                         sic+=future_paths[i].size()-1;
-                        if (sic > solution_costs.back())
-                        {
-                            cout<<"commit paths:"<<endl;
-                            for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
-                            {
-                                for (auto vertex: commited_paths[i])
-                                {
-                                    cout<<vertex<<", ";
-                                }
-                                cout<<endl;
-                            }
-                            cout<<endl;  
-                            cout<<"future paths"<<endl;
-                            for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
-                            {
-                                for (auto vertex: future_paths[i])
-                                {
-                                    cout<<vertex<<", ";
-                                }
-                                cout<<endl;
-                            }
-                            cout<<endl;
-                        }
+                        // if (sic > solution_costs.back())
+                        // {
+                        //     cout<<"wrong"<<endl;
+                        // }
                     }
-                    solution_costs.emplace_back(sic);
+                    solution_costs.emplace_back(sic + instance.getDefaultNumberOfAgents()*wait);
+                    iterations.emplace_back(lns.iteration_stats.size());
+                    success_iterations.emplace_back(lns.iteration_stats.size() - lns.num_of_failures);
+                    ll_searchs.emplace_back(lns.num_ll_search);
+                    ll_times.emplace_back(lns.sum_ll_time);
                     total_step+=commit_step;
                     std::cout<<"Preprocessing time: "<<lns.preprocessing_time<<std::endl;
-                }
-                else
-                {
-                    cerr << "Iteration failed" << endl;
-                    exit(-1);
-                }
             }
+
+
             //check if commit is done
             if (!commited_paths[0].empty())
             {
@@ -314,23 +386,73 @@ int main(int argc, char** argv)
         cout<<"time per step:"<<endl;
         cout<<step_time<<endl;
         cout<<"sic in iterations:"<<endl;
+        cout<<"makespan: "<<endl;
+        cout<<total_step<<endl;
         for(auto sic: solution_costs)
         {
             cout<<sic<<" ";
         }
         cout<<endl;
-        // cout<<"commit paths:"<<endl;
-        // for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
-        // {
-        //     for (auto vertex: commited_paths[i])
-        //     {
-        //         cout<<vertex<<", ";
-        //     }
-        //     cout<<endl;
-        // }
-        // cout<<endl;
+        cout<<"num of iterations:"<<endl;
+        for(auto i:iterations)
+        {
+            cout<<i<<" ";
+        }
+        cout<<endl;
+        cout<<"num of success iterations:"<<endl;
+        for(auto i:success_iterations)
+        {
+            cout<<i<<" ";
+        }
+        cout<<endl;
+
+        cout<<"num of low level searches:"<<endl;
+        for(auto i:ll_searchs)
+        {
+            cout<<i<<" ";
+        }
+        cout<<endl;
+
+         cout<<"sum of low level searches times:"<<endl;
+        for(auto i:ll_times)
+        {
+            cout<<i<<" ";
+        }
+        cout<<endl;
+
+        cout<<"commit paths:"<<endl;
+        for (int i = 0; i < instance.getDefaultNumberOfAgents();i++)
+        {
+            for (auto vertex: commited_paths[i])
+            {
+                cout<<vertex<<", ";
+            }
+            cout<<endl;
+        }
+        cout<<endl;
+
+        string name = vm["output"].as<string>();
+        std::ifstream infile(name);
+        bool exist = infile.good();
+        infile.close();
+        if (!exist)
+        {
+            ofstream addHeads(name);
+            addHeads << "num of agents," <<
+            "sum of costs," <<
+            "initial sum of costs," <<
+            "wait," << endl;
+            addHeads.close();
+        }
+        
+        ofstream stats(name, std::ios::app);
+        stats << instance.getDefaultNumberOfAgents() << "," <<
+                solution_costs.back() << "," <<
+                solution_costs.front() << "," <<
+                wait << "," << endl;
+        stats.close();
     }
-	else
+    else
     {
 	    cerr << "Solver " << vm["solver"].as<string>() << " does not exist!" << endl;
 	    exit(-1);

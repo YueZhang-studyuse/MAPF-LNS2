@@ -3,13 +3,13 @@
 #include "InitLNS.h"
 
 //pibt related
-#include "simplegrid.h"
-#include "pibt_agent.h"
-#include "problem.h"
-#include "mapf.h"
-#include "pibt.h"
-#include "pps.h"
-#include "winpibt.h"
+//#include "simplegrid.h"
+//#include "pibt_agent.h"
+// #include "problem.h"
+// #include "mapf.h"
+// #include "pibt.h"
+// #include "pps.h"
+// #include "winpibt.h"
 
 enum destroy_heuristic { RANDOMAGENTS, RANDOMWALK, INTERSECTION, DESTORY_COUNT };
 
@@ -29,6 +29,13 @@ public:
     int restart_times = 0;
     int complete_paths = 0;
     int delete_timesteps = 0;
+
+    //data for ll search
+    int num_ll_search = 0;
+    double sum_ll_time = 0;
+
+    bool has_initial_solution = false;
+
     LNS(const Instance& instance, double time_limit,
         string  init_algo_name, string  replan_algo_name, const string & destory_name,
         int neighbor_size, int num_of_iterations, bool init_lns, string  init_destory_name, bool use_sipp,
@@ -59,7 +66,7 @@ public:
 
 private:
     InitLNS* init_lns = nullptr;
-    bool has_initial_solution = false;
+    // bool has_initial_solution = false;
     string init_algo_name;
     string replan_algo_name;
     bool use_init_lns; // use LNS to find initial solutions
@@ -81,13 +88,14 @@ private:
     bool runEECBS();
     bool runCBS();
     bool runPP();
-    bool runPIBT();
-    bool runPPS();
-    bool runWinPIBT();
+    //bool runPIBT();
+    //bool runPPS();
+    //bool runWinPIBT();
+    bool runLACAM2(); 
 
 
-    MAPF preparePIBTProblem(vector<int>& shuffled_agents);
-    void updatePIBTResult(const PIBT_Agents& A, vector<int>& shuffled_agents);
+    //MAPF preparePIBTProblem(vector<int>& shuffled_agents);
+    //void updatePIBTResult(const PIBT_Agents& A, vector<int>& shuffled_agents);
 
     void chooseDestroyHeuristicbyALNS();
 

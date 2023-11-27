@@ -32,6 +32,8 @@ struct Neighbor
     set<pair<int, int>> colliding_pairs;  // id1 < id2
     set<pair<int, int>> old_colliding_pairs;  // id1 < id2
     vector<Path> old_paths;
+    int sum_of_costs_target_stay;
+    int old_sum_of_costs_target_stay;
 };
 
 class BasicLNS

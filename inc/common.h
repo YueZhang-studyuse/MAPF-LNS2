@@ -65,9 +65,12 @@ struct IterationStats
     string algorithm;
     int sum_of_costs_lowerbound;
     int num_of_colliding_pairs;
-    IterationStats(int num_of_agents, int sum_of_costs, double runtime, string algorithm,
+    // int num_ll_search;
+    // double sum_ll_time;
+
+    IterationStats(int num_of_agents, int sum_of_costs, double runtime, string algorithm, //int num_ll_search, double sum_ll_time,
                    int sum_of_costs_lowerbound = 0, int num_of_colliding_pairs = 0) :
-            num_of_agents(num_of_agents), sum_of_costs(sum_of_costs), runtime(runtime),
+            num_of_agents(num_of_agents), sum_of_costs(sum_of_costs), runtime(runtime), //num_ll_search(num_ll_search), sum_ll_time(sum_ll_time)
             sum_of_costs_lowerbound(sum_of_costs_lowerbound), algorithm(std::move(algorithm)),
             num_of_colliding_pairs(num_of_colliding_pairs) {}
 };

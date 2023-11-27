@@ -78,7 +78,7 @@ void PathTable::getConflictingAgentswithStayTarget(int agent_id, set<int>& confl
         bool insert_to_set = true;
         if (stay_target[agent] != 0)
         {
-            insert_to_set = (rand()*(stay_target[agent] + 1) < 1);
+            insert_to_set = (rand()%stay_target[agent] < 1);
         }
         if (insert_to_set)
             conflicting_agents.insert(agent); // vertex conflict
@@ -91,7 +91,7 @@ void PathTable::getConflictingAgentswithStayTarget(int agent_id, set<int>& confl
         bool insert_to_set = true;
         if (stay_target[agent] != 0)
         {
-            insert_to_set = (rand()*(stay_target[agent] + 1) < 1);
+            insert_to_set = (rand()%stay_target[agent] < 1);
         }
         if (insert_to_set)
             conflicting_agents.insert(agent); // vertex conflict
@@ -121,18 +121,21 @@ void PathTable::get_agents(set<int>& conflicting_agents, int neighbor_size, int 
     int t0 = rand() % t_max;
     if (table[loc][t0] != NO_AGENT)
         conflicting_agents.insert(table[loc][t0]);
+        //insert_with_target_stay(conflicting_agents,stay_target,table[loc][t0]);
     int delta = 1;
     while (t0 - delta >= 0 || t0 + delta <= t_max)
     {
         if (t0 - delta >= 0 && table[loc][t0 - delta] != NO_AGENT)
         {
             conflicting_agents.insert(table[loc][t0 - delta]);
+            //insert_with_target_stay(conflicting_agents,stay_target,table[loc][t0]);
             if((int) conflicting_agents.size() == neighbor_size)
                 return;
         }
         if (t0 + delta <= t_max && table[loc][t0 + delta] != NO_AGENT)
         {
             conflicting_agents.insert(table[loc][t0 + delta]);
+            //insert_with_target_stay(conflicting_agents,stay_target,table[loc][t0]);
             if((int) conflicting_agents.size() == neighbor_size)
                 return;
         }
@@ -178,7 +181,7 @@ void PathTable::insert_with_target_stay(set<int>& conflicting_agents, vector<int
     bool insert_to_set = true;
     if (stay_target[agent] != 0)
     {
-        insert_to_set = (rand()*(stay_target[agent] + 1) < 1);
+        insert_to_set = (rand()%(stay_target[agent]+1) < 1);
     }
     if (insert_to_set)
         conflicting_agents.insert(agent); // vertex conflict
