@@ -192,7 +192,7 @@ int main(int argc, char** argv)
                 //lns.setIterations(0);
                 //lns.setRuntimeLimit(step_time + wait);
                 lns.setRuntimeLimit(1+wait); //set initial run to step time as default
-                lns.setRuntimeLimit(20);
+                //lns.setRuntimeLimit(20);
                 succ = lns.run();
                 if (succ)
                 {
@@ -270,11 +270,11 @@ int main(int argc, char** argv)
                 }
                 future_paths.clear();
                 future_paths.resize(instance.getDefaultNumberOfAgents());
-                if (!initial_succ)
-                {
-                    //need more time to commit
-                    commit_step++;
-                }
+                // if (!initial_succ)
+                // {
+                //     //need more time to commit
+                //     commit_step++;
+                // }
                 // else
                 // {
                 //     //dynamic commit
