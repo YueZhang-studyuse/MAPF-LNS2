@@ -674,13 +674,12 @@ bool LNS::runPP()
             neighbor.sum_of_costs_target_stay  += stay_target[id];
         }
         //if (neighbor.sum_of_costs >= neighbor.old_sum_of_costs)
+        remaining_agents--;
          if (neighbor.sum_of_costs_target_stay >= neighbor.old_sum_of_costs_target_stay)
         {
-            if (screen >= 3)
-                cout<<"solution worse"<<endl;
             break;
         }
-        remaining_agents--;
+        // remaining_agents--;
         path_table.insertPath(agents[id].id, agents[id].path);
         ++p;
     }
