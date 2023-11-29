@@ -123,6 +123,8 @@ bool LNS::run()
         return false; // terminate because no initial solution is found
     }
 
+    int initial_improve_succ = 0;
+
     while (runtime < time_limit && iteration_stats.size() <= num_of_iterations)
     {
         bool update_queue = (!initial_improve_done && agent_delays.empty());
@@ -178,6 +180,8 @@ bool LNS::run()
                 }
             }
             succ = runPP();
+            if (succ)
+                initial_improve_succ++;
             if (agent_delays.empty())
                 initial_improve_done = true;
         }
@@ -289,6 +293,7 @@ bool LNS::run()
          << "solution cost = " << sum_of_costs << ", "
          << "initial solution cost = " << initial_sum_of_costs << ", "
          << "failed iterations = " << num_of_failures << endl;
+    cout<<"initial improve succ = "<<initial_improve_succ<<endl;
     cout<<"iterations details"<<endl;
     int time = 0;
     for (auto i: iteration_stats)
