@@ -138,13 +138,16 @@ bool LNS::run()
             }
             if (update_queue)
             {
-                agent_delays.push(make_pair(delays,i));
+                if (delays > 0)
+                    agent_delays.push(make_pair(delays,i));
             }
         }
         if (max_delays == 0)
         {
             break; //early termination
         }
+        if (update_queue)
+            cout<<"delay queue: "<<agent_delays.size()<<endl;
 
         // int settings = 0;
         // if (sum_of_costs <= settings)
