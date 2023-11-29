@@ -216,10 +216,6 @@ int main(int argc, char** argv)
                     // }
                     // cout<<commit_step<<" "<<success<<endl;
 
-                    //try add commit anyway
-                    commit_step++;
-                    last_improve_pers = (lns.initial_sum_of_costs - lns.sum_of_costs)/lns.(runtime-initial_solution_runtime);
-
                     lns.commitPath(commit_step,commited_paths,future_paths,false,total_step);
                     solution_costs.emplace_back(lns.sum_of_costs + instance.getDefaultNumberOfAgents()*wait);
                     iterations.emplace_back(lns.iteration_stats.size());
@@ -234,8 +230,6 @@ int main(int argc, char** argv)
                 {
                     initial_succ = false;
                     cout<<"not success"<<endl;
-                    //if failed, commit++
-                    commit_step++;
 
                     lns.commitPath(commit_step,commited_paths,future_paths,false,total_step);
                     solution_costs.emplace_back(lns.sum_of_costs + instance.getDefaultNumberOfAgents()*wait);

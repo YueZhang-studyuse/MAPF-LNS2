@@ -125,6 +125,7 @@ bool LNS::run()
 
     while (runtime < time_limit && iteration_stats.size() <= num_of_iterations)
     {
+        bool update_queue = (!initial_improve_done && agent_delays.empty());
         int a = -1;
         int max_delays = -1;
         for (int i = 0; i < agents.size(); i++)
@@ -134,6 +135,10 @@ bool LNS::run()
             {
                 a = i;
                 max_delays = delays;
+            }
+            if (update_queue)
+            {
+                agent_delays.push(make_pair(delays,i));
             }
         }
         if (max_delays == 0)
@@ -147,85 +152,115 @@ bool LNS::run()
         //     break;
         // }
         runtime =((fsec)(Time::now() - start_time)).count();
-        if(screen >= 1)
-            validateSolution();
-        if (ALNS)
-            chooseDestroyHeuristicbyALNS();
-
-        switch (destroy_strategy)
+        if (!initial_improve_done) //get rid of lacam solution first
         {
-            case RANDOMWALK:
-                succ = generateNeighborByRandomWalk();
-                break;
-            case INTERSECTION:
-                succ = generateNeighborByIntersection();
-                break;
-            case RANDOMAGENTS:
-                neighbor.agents.resize(agents.size());
-                for (int i = 0; i < (int)agents.size(); i++)
-                    neighbor.agents[i] = i;
-                if (neighbor.agents.size() > neighbor_size)
-                {
-                    std::random_shuffle(neighbor.agents.begin(), neighbor.agents.end());
-                    neighbor.agents.resize(neighbor_size);
-                }
-                succ = true;
-                break;
-            default:
-                cerr << "Wrong neighbor generation strategy" << endl;
-                exit(-1);
-        }
-        if(!succ)
-            continue;
+            neighbor.agents.resize(1);
+            neighbor.agents[0] = agent_delays.top().second; //get the most delays
+            agent_delays.pop();
 
-        runtime =((fsec)(Time::now() - start_time)).count();
-        if (runtime >= time_limit)
-            break;
-
-        // store the neighbor information
-        neighbor.old_paths.resize(neighbor.agents.size());
-        neighbor.old_sum_of_costs = 0;
-        neighbor.old_sum_of_costs_target_stay = 0;
-        for (int i = 0; i < (int)neighbor.agents.size(); i++)
-        {
-            if (replan_algo_name == "PP")
-                neighbor.old_paths[i] = agents[neighbor.agents[i]].path;
-            path_table.deletePath(neighbor.agents[i], agents[neighbor.agents[i]].path);
-            neighbor.old_sum_of_costs += agents[neighbor.agents[i]].path.size() - 1;
-            neighbor.old_sum_of_costs_target_stay += agents[neighbor.agents[i]].path.size() - 1;
-            //cout<<stay_target[neighbor.agents[i]]<<" ";
-            if (agents[neighbor.agents[i]].path.size() > 1 && stay_target[neighbor.agents[i]] > 0)
+            neighbor.old_paths.resize(neighbor.agents.size());
+            neighbor.old_sum_of_costs = 0;
+            neighbor.old_sum_of_costs_target_stay = 0;
+            for (int i = 0; i < (int)neighbor.agents.size(); i++)
             {
-                neighbor.old_sum_of_costs_target_stay += stay_target[neighbor.agents[i]];
+                if (replan_algo_name == "PP")
+                    neighbor.old_paths[i] = agents[neighbor.agents[i]].path;
+                path_table.deletePath(neighbor.agents[i], agents[neighbor.agents[i]].path);
+                neighbor.old_sum_of_costs += agents[neighbor.agents[i]].path.size() - 1;
+                neighbor.old_sum_of_costs_target_stay += agents[neighbor.agents[i]].path.size() - 1;
+                //cout<<stay_target[neighbor.agents[i]]<<" ";
+                if (agents[neighbor.agents[i]].path.size() > 1 && stay_target[neighbor.agents[i]] > 0)
+                {
+                    neighbor.old_sum_of_costs_target_stay += stay_target[neighbor.agents[i]];
+                }
             }
+            succ = runPP();
+            if (agent_delays.empty())
+                initial_improve_done = true;
         }
-        //cout<<endl;
-
-        // if (replan_algo_name == "EECBS")
-        //     succ = runEECBS();
-        // else if (replan_algo_name == "CBS")
-        //     succ = runCBS();
-        // else if (replan_algo_name == "PP")
-        succ = runPP();
-        // else
-        // {
-        //     cerr << "Wrong replanning strategy" << endl;
-        //     exit(-1);
-        // }
-
-        if (ALNS) // update destroy heuristics
+        else
         {
-            // if (neighbor.old_sum_of_costs > neighbor.sum_of_costs )
-            //     destroy_weights[selected_neighbor] =
-            //             reaction_factor * (neighbor.old_sum_of_costs - neighbor.sum_of_costs) / neighbor.agents.size()
-            //             + (1 - reaction_factor) * destroy_weights[selected_neighbor];
-            if (neighbor.old_sum_of_costs_target_stay > neighbor.sum_of_costs_target_stay )
-                destroy_weights[selected_neighbor] =
-                        reaction_factor * (neighbor.old_sum_of_costs_target_stay - neighbor.sum_of_costs_target_stay) / neighbor.agents.size()
-                        + (1 - reaction_factor) * destroy_weights[selected_neighbor];
-            else
-                destroy_weights[selected_neighbor] =
-                        (1 - decay_factor) * destroy_weights[selected_neighbor];
+
+            if (screen >= 1)
+                validateSolution();
+            if (ALNS)
+                chooseDestroyHeuristicbyALNS();
+
+            switch (destroy_strategy)
+            {
+                case RANDOMWALK:
+                    succ = generateNeighborByRandomWalk();
+                    break;
+                case INTERSECTION:
+                    succ = generateNeighborByIntersection();
+                    break;
+                case RANDOMAGENTS:
+                    neighbor.agents.resize(agents.size());
+                    for (int i = 0; i < (int)agents.size(); i++)
+                        neighbor.agents[i] = i;
+                    if (neighbor.agents.size() > neighbor_size)
+                    {
+                        std::random_shuffle(neighbor.agents.begin(), neighbor.agents.end());
+                        neighbor.agents.resize(neighbor_size);
+                    }
+                    succ = true;
+                    break;
+                default:
+                    cerr << "Wrong neighbor generation strategy" << endl;
+                    exit(-1);
+            }
+            if(!succ)
+                continue;
+
+            runtime =((fsec)(Time::now() - start_time)).count();
+            if (runtime >= time_limit)
+                break;
+
+            // store the neighbor information
+            neighbor.old_paths.resize(neighbor.agents.size());
+            neighbor.old_sum_of_costs = 0;
+            neighbor.old_sum_of_costs_target_stay = 0;
+            for (int i = 0; i < (int)neighbor.agents.size(); i++)
+            {
+                if (replan_algo_name == "PP")
+                    neighbor.old_paths[i] = agents[neighbor.agents[i]].path;
+                path_table.deletePath(neighbor.agents[i], agents[neighbor.agents[i]].path);
+                neighbor.old_sum_of_costs += agents[neighbor.agents[i]].path.size() - 1;
+                neighbor.old_sum_of_costs_target_stay += agents[neighbor.agents[i]].path.size() - 1;
+                //cout<<stay_target[neighbor.agents[i]]<<" ";
+                if (agents[neighbor.agents[i]].path.size() > 1 && stay_target[neighbor.agents[i]] > 0)
+                {
+                    neighbor.old_sum_of_costs_target_stay += stay_target[neighbor.agents[i]];
+                }
+            }
+            //cout<<endl;
+
+            // if (replan_algo_name == "EECBS")
+            //     succ = runEECBS();
+            // else if (replan_algo_name == "CBS")
+            //     succ = runCBS();
+            // else if (replan_algo_name == "PP")
+            succ = runPP();
+            // else
+            // {
+            //     cerr << "Wrong replanning strategy" << endl;
+            //     exit(-1);
+            // }
+
+            if (ALNS) // update destroy heuristics
+            {
+                // if (neighbor.old_sum_of_costs > neighbor.sum_of_costs )
+                //     destroy_weights[selected_neighbor] =
+                //             reaction_factor * (neighbor.old_sum_of_costs - neighbor.sum_of_costs) / neighbor.agents.size()
+                //             + (1 - reaction_factor) * destroy_weights[selected_neighbor];
+                if (neighbor.old_sum_of_costs_target_stay > neighbor.sum_of_costs_target_stay )
+                    destroy_weights[selected_neighbor] =
+                            reaction_factor * (neighbor.old_sum_of_costs_target_stay - neighbor.sum_of_costs_target_stay) / neighbor.agents.size()
+                            + (1 - reaction_factor) * destroy_weights[selected_neighbor];
+                else
+                    destroy_weights[selected_neighbor] =
+                            (1 - decay_factor) * destroy_weights[selected_neighbor];
+            }
         }
         runtime = ((fsec)(Time::now() - start_time)).count();
         sum_of_costs += neighbor.sum_of_costs - neighbor.old_sum_of_costs;

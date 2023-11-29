@@ -1,6 +1,7 @@
 #pragma once
 #include "BasicLNS.h"
 #include "InitLNS.h"
+#include <queue>
 
 //pibt related
 //#include "simplegrid.h"
@@ -35,6 +36,9 @@ public:
     double sum_ll_time = 0;
 
     bool has_initial_solution = false;
+
+    bool initial_improve_done = false;
+    std::priority_queue<pair<int,int>> agent_delays;
 
     LNS(const Instance& instance, double time_limit,
         string  init_algo_name, string  replan_algo_name, const string & destory_name,
